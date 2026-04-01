@@ -64,7 +64,11 @@ class TestEmbeddingsDB:
         result = db.get_by_memory_id("mem_001")
         assert result is not None
         assert result["memory_id"] == "mem_001"
-        assert result["embedding"] == [0.1, 0.2, 0.3]
+        # sqlite-vec usa float32, então há pequena diferença de precisão
+        assert len(result["embedding"]) == 3
+        assert result["embedding"][0] == pytest.approx(0.1, abs=0.001)
+        assert result["embedding"][1] == pytest.approx(0.2, abs=0.001)
+        assert result["embedding"][2] == pytest.approx(0.3, abs=0.001)
 
         # Restaura função original
         db._compute_embedding = original_compute
