@@ -5,6 +5,7 @@ Detecta e configura o Claude Desktop e Claude Code automaticamente.
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -99,10 +100,30 @@ def find_claude_desktop_config() -> Path | None:
 
 def get_ocerebro_path() -> Path:
     """Retorna o caminho absoluto do OCerebro instalado"""
-    # Tenta encontrar o package instalado
-    import ocerebro
-    ocerebro_path = Path(ocerebro.__file__).parent
-    return ocerebro_path.resolve()
+    # Tenta encontrar o package instalado via pip
+    try:
+        import cerebro
+        cerebro_path = Path(cerebro.__file__).parent
+        return cerebro_path.resolve()
+    except ImportError:
+        pass
+
+    # Fallback: usa pip show para encontrar o Location
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", "ocerebro"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("Location:"):
+                    return Path(line.split(":", 1)[1].strip())
+    except Exception:
+        pass
+
+    # Último fallback: usa o path do próprio arquivo
+    return Path(__file__).parent.resolve()
 
 
 def generate_mcp_config(ocerebro_path: Path) -> dict:
