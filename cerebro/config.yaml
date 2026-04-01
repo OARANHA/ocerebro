@@ -1,0 +1,9 @@
+# LLM usado pelo dream (extração automática de memórias)
+# Requer ANTHROPIC_API_KEY no ambiente
+llm:
+  model: "claude-opus-4-5"
+  # Alternativas:
+  # model: "claude-3-5-haiku-latest"   # mais rápido e barato
+  # model: "claude-3-7-sonnet-latest"  # balanço custo/qualidade
+  max_tokens: 8096
+  temperature: 0

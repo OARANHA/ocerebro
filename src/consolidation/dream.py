@@ -29,6 +29,7 @@ class DreamResult:
         memory_dir: Diretório de memória processado
         dry_run: Se True, nada foi modificado
         period_days: Período analisado
+        prompt_preview: Preview do prompt usado na extração
     """
     written_files: List[Path]
     memory_dir: Path
@@ -36,6 +37,7 @@ class DreamResult:
     period_days: int
     new_memories: List[str] = None
     updated_memories: List[str] = None
+    prompt_preview: str = ""
 
 
 # ============================================================================
@@ -325,24 +327,77 @@ def run_dream(
     full_prompt = "\n".join(prompt_sections)
 
     # Passo 4: Chamada à API Claude
-    # Nota: Esta é uma implementação simplificada
-    # A implementação completa usaria call_claude_api() com max_turns=5
-    # e tool restrictions (Write/Edit bloqueados fora de memory_dir)
+    import re
+    import os
 
-    # Para esta versão, simulamos o resultado
-    # A implementação real integraria com o MCP ou API direta
+    prompt_preview = full_prompt
+
+    if dry_run:
+        return DreamResult(
+            written_files=[],
+            memory_dir=memory_dir,
+            dry_run=dry_run,
+            period_days=since_days,
+            new_memories=[],
+            updated_memories=[],
+            prompt_preview=prompt_preview,
+        )
+
+    # Chamada real à API
+    try:
+        import anthropic
+        model = os.environ.get("CEREBRO_MODEL", "claude-opus-4-5")
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=model,
+            max_tokens=8096,
+            system=full_prompt,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Analyze the conversation transcript and extract memories "
+                    "worth saving. Focus on decisions, feedback, and project facts."
+                )
+            }]
+        )
+        response_text = response.content[0].text if response.content else ""
+    except Exception as e:
+        return DreamResult(
+            written_files=[],
+            memory_dir=memory_dir,
+            dry_run=dry_run,
+            period_days=since_days,
+            new_memories=[],
+            updated_memories=[],
+            prompt_preview=f"ERRO na chamada LLM: {e}",
+        )
+
+    # Parse: extrai filenames .md mencionados na resposta
+    mentioned = re.findall(r'[\w\-]+\.md', response_text)
+    mentioned = list(dict.fromkeys(mentioned))  # dedup mantendo ordem
+
     written_files = []
     new_memories = []
     updated_memories = []
 
-    # Passo 5: Report
+    for fname in mentioned:
+        if fname == "MEMORY.md":
+            continue
+        fpath = memory_dir / fname
+        if fpath.exists():
+            updated_memories.append(fname)
+            written_files.append(fpath)
+        else:
+            new_memories.append(fname)
+
     return DreamResult(
         written_files=written_files,
         memory_dir=memory_dir,
         dry_run=dry_run,
         period_days=since_days,
         new_memories=new_memories,
-        updated_memories=updated_memories
+        updated_memories=updated_memories,
+        prompt_preview=prompt_preview,
     )
 
 

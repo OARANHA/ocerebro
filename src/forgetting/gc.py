@@ -210,18 +210,44 @@ class GarbageCollector:
                         self.log_gc_event("error", candidate["filename"], str(e), log_path)
 
             # Arquiva as restantes (não deletadas)
+            import shutil
+
+            arquivo_dir = memory_dir / "arquivo"
+            arquivo_dir.mkdir(parents=True, exist_ok=True)
+
+            memory_index = memory_dir / "MEMORY.md"
+
             for candidate in archive_candidates:
                 if candidate["filename"] not in results["deleted"]:
-                    # TODO: Implementar arquivamento (mover para arquivo/)
-                    results["archived"].append(candidate["filename"])
+                    src_path = Path(candidate["file_path"])
+                    dst_path = arquivo_dir / src_path.name
+                    try:
+                        shutil.move(str(src_path), str(dst_path))
+                        results["archived"].append(candidate["filename"])
 
-                    if log_path:
-                        self.log_gc_event(
-                            "archive",
-                            candidate["filename"],
-                            f"GC: {candidate['days_since_modified']} dias sem modificação",
-                            log_path
-                        )
+                        # Remove referência do MEMORY.md
+                        if memory_index.exists():
+                            lines = memory_index.read_text(encoding="utf-8").splitlines()
+                            updated = [
+                                l for l in lines
+                                if candidate["filename"] not in l
+                            ]
+                            memory_index.write_text(
+                                "\n".join(updated), encoding="utf-8"
+                            )
+
+                        if log_path:
+                            self.log_gc_event(
+                                "archive",
+                                candidate["filename"],
+                                f"GC: {candidate['days_since_modified']} dias sem modificação",
+                                log_path
+                            )
+                    except Exception as e:
+                        if log_path:
+                            self.log_gc_event(
+                                "error", candidate["filename"], str(e), log_path
+                            )
 
         return results
 
