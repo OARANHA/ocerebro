@@ -1,8 +1,10 @@
 """Captura de eventos core do Cerebro"""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from pathlib import Path
 from src.core.jsonl_storage import JSONLStorage
 from src.core.event_schema import Event, EventType, EventOrigin
+from src.hooks.custom_loader import HooksLoader, HookRunner
 
 
 class CoreCaptures:
@@ -14,9 +16,17 @@ class CoreCaptures:
     - Git events (eventos do git)
     - Test results (resultados de testes)
     - Errors (erros críticos)
+
+    Hooks customizados são executados automaticamente após cada captura.
     """
 
-    def __init__(self, storage: JSONLStorage, project: str, session_id: str):
+    def __init__(
+        self,
+        storage: JSONLStorage,
+        project: str,
+        session_id: str,
+        hooks_config_path: Optional[Path] = None
+    ):
         """
         Inicializa o CoreCaptures.
 
@@ -24,10 +34,21 @@ class CoreCaptures:
             storage: Instância do JSONLStorage
             project: Nome do projeto
             session_id: ID da sessão
+            hooks_config_path: Path para hooks.yaml (opcional)
         """
         self.storage = storage
         self.project = project
         self.session_id = session_id
+
+        # Inicializa hooks loader e runner
+        if hooks_config_path is None:
+            hooks_config_path = Path("hooks.yaml")
+
+        self.hooks_loader = HooksLoader(hooks_config_path)
+        self.hooks_runner = HookRunner(self.hooks_loader, context={
+            "project": project,
+            "session_id": session_id
+        })
 
     def _create_event(
         self,
@@ -37,7 +58,7 @@ class CoreCaptures:
         tags: list = None
     ) -> Event:
         """
-        Cria e persiste evento.
+        Cria e persiste evento, executando hooks customizados.
 
         Args:
             event_type: Tipo do evento
@@ -58,6 +79,10 @@ class CoreCaptures:
             session_id=self.session_id
         )
         self.storage.append(event)
+
+        # Executa hooks customizados para este evento
+        self.hooks_runner.execute(event)
+
         return event
 
     def tool_call(self, tool: str, call_data: Dict[str, Any], result: Dict[str, Any]) -> Event:
