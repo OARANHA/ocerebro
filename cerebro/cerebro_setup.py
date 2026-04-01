@@ -87,7 +87,7 @@ def backup_config(config_path: Path) -> Path | None:
 
     backup_path = config_path.with_suffix(".json.bak")
     backup_path.write_text(config_path.read_text(encoding="utf-8"), encoding="utf-8")
-    print(f"✓ Backup criado: {backup_path}")
+    print(f"[OK] Backup criado: {backup_path}")
     return backup_path
 
 
@@ -231,7 +231,7 @@ def setup_cerebro_dir(project_path: Path | None = None) -> bool:
     cerebro_dir = project_path / ".cerebro"
 
     if cerebro_dir.exists():
-        print(f"✓ Diretório .cerebro já existe")
+        print(f"[OK] Diretório .cerebro já existe")
         return True
 
     # Cria estrutura
