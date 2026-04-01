@@ -352,6 +352,12 @@ def main():
     gc_parser.add_argument("--dry-run", action="store_true", default=True, help="Apenas simular")
     gc_parser.add_argument("--apply", action="store_false", dest="dry_run", help="Aplicar GC")
 
+    # Comando: setup
+    setup_parser = subparsers.add_parser("setup", help="Configurar MCP Server e projeto automaticamente")
+    setup_parser.add_argument("subcommand", nargs="?", choices=["claude", "hooks", "init"], default="all",
+                              help="O que configurar: claude (MCP), hooks (hooks.yaml), init (tudo)")
+    setup_parser.add_argument("--project", type=Path, help="Diretório do projeto (padrão: atual)")
+
     # Comando: status
     subparsers.add_parser("status", help="Status do sistema")
 
@@ -360,6 +366,29 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    # Comando setup nao precisa de CLI
+    if args.command == "setup":
+        from cerebro.cerebro_setup import setup_claude_desktop, setup_hooks, setup_cerebro_dir
+
+        if args.subcommand == "claude":
+            success = setup_claude_desktop()
+            sys.exit(0 if success else 1)
+        elif args.subcommand == "hooks":
+            success = setup_hooks(args.project)
+            sys.exit(0 if success else 1)
+        elif args.subcommand == "init":
+            setup_cerebro_dir(args.project)
+            setup_hooks(args.project)
+            print("\nSetup completo! Agora execute:")
+            print("  cerebro setup claude")
+            sys.exit(0)
+        else:
+            # Setup completo
+            setup_cerebro_dir(args.project)
+            setup_hooks(args.project)
+            setup_claude_desktop()
+            sys.exit(0)
 
     # Inicializa CLI
     cli = CerebroCLI(args.cerebro_path)
