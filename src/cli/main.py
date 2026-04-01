@@ -423,8 +423,8 @@ def main():
     parser.add_argument(
         "--cerebro-path",
         type=Path,
-        default=Path(".cerebro"),
-        help="Diretório base do Cerebro"
+        default=Path(".ocerebro"),
+        help="Diretório base do OCerebro"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Comandos")
@@ -505,8 +505,27 @@ def main():
             success = setup_hooks(args.project)
             sys.exit(0 if success else 1)
         elif args.subcommand == "init":
-            setup_cerebro_dir(args.project)
-            setup_hooks(args.project)
+            # Pergunta: global ou projeto?
+            print("Como quer usar o OCerebro?")
+            print("  1. Neste projeto (cria .ocerebro/ aqui)")
+            print("  2. Global (usa ~/.ocerebro/ para todos os projetos)")
+            choice = input("\nEscolha [1/2] (padrão: 1): ").strip() or "1"
+
+            if choice == "2":
+                base_path = Path.home() / ".ocerebro"
+                print(f"\n✓ Modo global: {base_path}")
+            else:
+                base_path = Path.cwd() / ".ocerebro"
+                print(f"\n✓ Modo projeto: {base_path}")
+
+            # Salva a escolha num arquivo de config global
+            config_file = Path.home() / ".ocerebro_config"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(f"base_path={base_path}\n", encoding="utf-8")
+            print(f"✓ Configuração salva em {config_file}")
+
+            setup_cerebro_dir(base_path)
+            setup_hooks(base_path)
             print("\nSetup completo! Agora execute:")
             print("  cerebro setup claude")
             sys.exit(0)

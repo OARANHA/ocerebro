@@ -53,9 +53,9 @@ class CerebroMCP:
         Inicializa o MCP Server.
 
         Args:
-            cerebro_path: Diretório base do Cerebro (default: .cerebro)
+            cerebro_path: Diretório base do OCerebro (default: .ocerebro)
         """
-        self.cerebro_path = cerebro_path or Path(".cerebro")
+        self.cerebro_path = cerebro_path or Path(".ocerebro")
         self.cerebro_path.mkdir(parents=True, exist_ok=True)
 
         # Inicializa componentes

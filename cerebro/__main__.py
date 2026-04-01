@@ -3,7 +3,7 @@
 Comandos:
     python -m cerebro setup          - Setup completo
     python -m cerebro setup claude   - Configura Claude Desktop
-    python -m cerebro setup init     - Cria .cerebro/ e hooks.yaml
+    python -m cerebro setup init     - Cria .ocerebro/ e hooks.yaml
 """
 
 import sys

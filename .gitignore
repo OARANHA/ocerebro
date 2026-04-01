@@ -7,7 +7,9 @@ raw/**/*.jsonl
 .worktrees/
 worktrees/
 
-# Cerebro data (cada projeto tem o seu)
+# OCerebro data (cada projeto tem o seu)
+.ocerebro/
+# Legado
 .cerebro/
 
 # Python
