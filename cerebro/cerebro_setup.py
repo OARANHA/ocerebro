@@ -118,7 +118,7 @@ def setup_claude_desktop() -> bool:
     config_path = find_claude_desktop_config()
 
     if config_path is None:
-        print("❌ Não foi possível localizar o Claude Desktop.")
+        print("[SYM] Não foi possível localizar o Claude Desktop.")
         print()
         print("Por favor, instale o Claude Desktop primeiro:")
         print("  https://claude.ai/download")
@@ -144,7 +144,7 @@ def setup_claude_desktop() -> bool:
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            print(f"⚠️ Erro ao ler configuração existente: {e}")
+            print(f"[SYM]️ Erro ao ler configuração existente: {e}")
             existing_config = {}
 
     # Faz merge
@@ -183,7 +183,7 @@ def setup_hooks(project_path: Path | None = None) -> bool:
     hooks_yaml = project_path / "hooks.yaml"
 
     if hooks_yaml.exists():
-        print(f"⚠️ hooks.yaml já existe em {project_path}")
+        print(f"[SYM]️ hooks.yaml já existe em {project_path}")
         return False
 
     example_config = """# Cerebro Hooks Configuration
