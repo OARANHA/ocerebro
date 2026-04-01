@@ -307,8 +307,8 @@ class CerebroCLI:
 def main():
     """Entry point da CLI"""
     parser = argparse.ArgumentParser(
-        prog="cerebro",
-        description="Cerebro - Sistema de Memória para Agentes de Código"
+        prog="ocerebro",
+        description="OCerebro - Sistema de Memoria para Agentes (Claude Code/MCP)"
     )
 
     parser.add_argument(
