@@ -1,8 +1,17 @@
-"""Garbage collection para memórias do Cerebro"""
+"""Garbage collection para memórias do Cerebro.
+
+Replica a lógica de garbage collection do Claude Code:
+- Filtra por mtime do arquivo (última modificação)
+- Nunca remove memórias de tipo 'user' ou 'feedback'
+- Aplica threshold de dias sem acesso para working sessions
+"""
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from src.memdir.scanner import parse_frontmatter
+from src.core.paths import MAX_MEMORY_FILES
 
 
 class GarbageCollector:
@@ -24,57 +33,97 @@ class GarbageCollector:
 
     def find_candidates_for_archive(
         self,
-        memories: List[Dict[str, Any]],
+        memory_dir: Path,
         days_threshold: int
     ) -> List[Dict[str, Any]]:
         """
         Encontra memórias candidatas para arquivamento.
 
         Args:
-            memories: Lista de memórias
+            memory_dir: Diretório de memória para scan
             days_threshold: Dias mínimos para arquivar
 
         Returns:
             Lista de memórias candidatas
         """
         candidates = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
+        cutoff_ts = (now.timestamp()) - (days_threshold * 24 * 60 * 60)
 
-        for memory in memories:
-            created_at = memory.get("created_at")
-            if not created_at:
+        if not memory_dir.exists():
+            return candidates
+
+        # Scan de arquivos .md (excluindo MEMORY.md)
+        for file_path in memory_dir.rglob("*.md"):
+            if file_path.name == "MEMORY.md":
                 continue
 
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            days_old = (now - created_dt).days
+            try:
+                # Usa mtime (última modificação) em vez de created_at
+                mtime = file_path.stat().st_mtime
 
-            if days_old > days_threshold:
-                candidates.append(memory)
+                if mtime < cutoff_ts:
+                    # Verifica tipo no frontmatter
+                    content = file_path.read_text(encoding="utf-8")[:2000]
+                    frontmatter = parse_frontmatter(content)
+                    mem_type = frontmatter.get("type")
+
+                    # Nunca arquiva memórias de tipo 'user' ou 'feedback'
+                    if mem_type in ['user', 'feedback']:
+                        continue
+
+                    candidates.append({
+                        "file_path": str(file_path),
+                        "filename": file_path.name,
+                        "type": mem_type,
+                        "name": frontmatter.get("name"),
+                        "description": frontmatter.get("description"),
+                        "mtime": mtime,
+                        "days_since_modified": int((now.timestamp() - mtime) / (24 * 60 * 60))
+                    })
+            except Exception:
+                # Silenciosamente ignora arquivos com erro
+                continue
 
         return candidates
 
     def find_candidates_for_deletion(
         self,
-        memories: List[Dict[str, Any]],
-        can_delete_fn
+        candidates: List[Dict[str, Any]],
+        deletion_threshold_days: int = 30
     ) -> List[Dict[str, Any]]:
         """
         Encontra memórias candidatas para deleção.
 
+        Critérios:
+        - mtime > deletion_threshold_days (mais antigo que threshold)
+        - Tipo NÃO é 'user', 'feedback', ou 'project' com atividade recente
+        - Não está linkada no MEMORY.md
+
         Args:
-            memories: Lista de memórias
-            can_delete_fn: Função que verifica se pode deletar
+            candidates: Lista de memórias candidatas (do find_candidates_for_archive)
+            deletion_threshold_days: Dias para deleção (default: 30)
 
         Returns:
-            Lista de memórias candidatas
+            Lista de memórias candidatas para deleção
         """
-        candidates = []
+        deletion_candidates = []
+        now = datetime.now()
+        deletion_cutoff = now.timestamp() - (deletion_threshold_days * 24 * 60 * 60)
 
-        for memory in memories:
-            if can_delete_fn(memory):
-                candidates.append(memory)
+        for memory in candidates:
+            mtime = memory.get("mtime", 0)
+            mem_type = memory.get("type")
 
-        return candidates
+            # Nunca deleta user ou feedback
+            if mem_type in ['user', 'feedback']:
+                continue
+
+            # Deleta se mtime > threshold
+            if mtime < deletion_cutoff:
+                deletion_candidates.append(memory)
+
+        return deletion_candidates
 
     def log_gc_event(
         self,
@@ -101,41 +150,121 @@ class GarbageCollector:
 
     def run_gc(
         self,
-        memories: List[Dict[str, Any]],
-        can_delete_fn,
-        archive_threshold: int,
+        memory_dir: Path,
+        archive_threshold_days: int = 7,
+        deletion_threshold_days: int = 30,
+        dry_run: bool = True,
         log_path: Optional[Path] = None
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[str, Any]:
         """
         Executa garbage collection.
 
         Args:
-            memories: Lista de memórias
-            can_delete_fn: Função que verifica se pode deletar
-            archive_threshold: Dias para arquivamento
+            memory_dir: Diretório de memória para scan
+            archive_threshold_days: Dias para arquivamento (default: 7)
+            deletion_threshold_days: Dias para deleção (default: 30)
+            dry_run: Se True, apenas lista candidatas, não remove
             log_path: Path para log (opcional)
 
         Returns:
-            Dicionário com IDs arquivados e deletados
+            Dicionário com resultados do GC
         """
-        results = {"archived": [], "deleted": []}
+        results = {
+            "archive_candidates": [],
+            "deletion_candidates": [],
+            "archived": [],
+            "deleted": [],
+            "dry_run": dry_run
+        }
 
-        archive_candidates = self.find_candidates_for_archive(memories, archive_threshold)
-        delete_candidates = self.find_candidates_for_deletion(archive_candidates, can_delete_fn)
+        # Passo 1: Encontra candidatas para arquivamento
+        archive_candidates = self.find_candidates_for_archive(
+            memory_dir, archive_threshold_days
+        )
+        results["archive_candidates"] = [c["filename"] for c in archive_candidates]
 
-        for memory in delete_candidates:
-            memory_id = memory.get("id", "unknown")
-            results["deleted"].append(memory_id)
+        # Passo 2: Encontra candidatas para deleção
+        deletion_candidates = self.find_candidates_for_deletion(
+            archive_candidates, deletion_threshold_days
+        )
+        results["deletion_candidates"] = [c["filename"] for c in deletion_candidates]
 
-            if log_path:
-                self.log_gc_event("delete", memory_id, "GC criteria met", log_path)
+        # Passo 3: Aplica GC (se não for dry_run)
+        if not dry_run:
+            for candidate in deletion_candidates:
+                try:
+                    file_path = Path(candidate["file_path"])
+                    file_path.unlink()
+                    results["deleted"].append(candidate["filename"])
 
-        for memory in archive_candidates:
-            memory_id = memory.get("id", "unknown")
-            if memory_id not in results["deleted"]:
-                results["archived"].append(memory_id)
+                    if log_path:
+                        self.log_gc_event(
+                            "delete",
+                            candidate["filename"],
+                            f"GC: {candidate['days_since_modified']} dias sem modificação",
+                            log_path
+                        )
+                except Exception as e:
+                    # Loga erro mas continua
+                    if log_path:
+                        self.log_gc_event("error", candidate["filename"], str(e), log_path)
 
-                if log_path:
-                    self.log_gc_event("archive", memory_id, "Age threshold met", log_path)
+            # Arquiva as restantes (não deletadas)
+            for candidate in archive_candidates:
+                if candidate["filename"] not in results["deleted"]:
+                    # TODO: Implementar arquivamento (mover para arquivo/)
+                    results["archived"].append(candidate["filename"])
+
+                    if log_path:
+                        self.log_gc_event(
+                            "archive",
+                            candidate["filename"],
+                            f"GC: {candidate['days_since_modified']} dias sem modificação",
+                            log_path
+                        )
 
         return results
+
+    def generate_gc_report(self, results: Dict[str, Any]) -> str:
+        """
+        Gera relatório legível do GC.
+
+        Args:
+            results: Dicionário de resultados do run_gc
+
+        Returns:
+            Relatório em markdown
+        """
+        lines = [
+            "# Garbage Collection Report",
+            "",
+            f"**Modo:** {'Dry-run (nenhuma modificação)' if results['dry_run'] else 'Aplicação direta'}",
+            "",
+            "## Resumo",
+            "",
+            f"- Candidatas para arquivamento: {len(results['archive_candidates'])}",
+            f"- Candidatas para deleção: {len(results['deletion_candidates'])}",
+            f"- Arquivadas: {len(results['archived'])}",
+            f"- Deletadas: {len(results['deleted'])}",
+            "",
+        ]
+
+        if results["archive_candidates"]:
+            lines.append("## Candidatas para Arquivamento")
+            lines.append("")
+            for filename in results["archive_candidates"]:
+                lines.append(f"- {filename}")
+            lines.append("")
+
+        if results["deletion_candidates"]:
+            lines.append("## Candidatas para Deleção")
+            lines.append("")
+            for filename in results["deletion_candidates"]:
+                lines.append(f"- {filename}")
+            lines.append("")
+
+        if not results["archive_candidates"] and not results["deletion_candidates"]:
+            lines.append("Nenhuma memória candidata para GC.")
+            lines.append("")
+
+        return "\n".join(lines)

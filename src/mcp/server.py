@@ -29,6 +29,10 @@ from src.index.embeddings_db import EmbeddingsDB
 from src.index.queries import QueryEngine
 from src.hooks.custom_loader import HooksLoader, HookRunner
 from src.diff.memory_diff import MemoryDiff
+from src.consolidation.dream import run_dream, generate_dream_report
+from src.consolidation.remember import run_remember, generate_remember_report
+from src.forgetting.gc import GarbageCollector
+from src.core.paths import get_auto_mem_path
 
 
 class CerebroMCP:
@@ -260,6 +264,58 @@ class CerebroMCP:
                     },
                     "required": ["project"]
                 }
+            ),
+            Tool(
+                name="cerebro_dream",
+                description="Extração automática de memórias (replica extractMemories do Claude Code) - analisa transcript e extrai memórias para user/feedback/project/reference",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "since_days": {
+                            "type": "integer",
+                            "description": "Dias para analisar (padrão: 7)",
+                            "default": 7
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Se True, apenas simula (padrão: True)",
+                            "default": True
+                        }
+                    }
+                }
+            ),
+            Tool(
+                name="cerebro_remember",
+                description="Revisão e promoção de memórias (replica /remember do Claude Code) - classifica memórias por tipo e detecta duplicatas/conflitos entre camadas",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Se True, apenas gera relatório (padrão: True)",
+                            "default": True
+                        }
+                    }
+                }
+            ),
+            Tool(
+                name="cerebro_gc",
+                description="Garbage collection de memórias - lista memórias stale por mtime e remove candidatas (nunca remove user/feedback)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "threshold_days": {
+                            "type": "integer",
+                            "description": "Dias para considerar memória stale (padrão: 7)",
+                            "default": 7
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Se True, apenas lista candidatas (padrão: True)",
+                            "default": True
+                        }
+                    }
+                }
             )
         ]
 
@@ -289,6 +345,12 @@ class CerebroMCP:
                 result = self._hooks(arguments)
             elif name == "cerebro_diff":
                 result = self._diff(arguments)
+            elif name == "cerebro_dream":
+                result = self._dream(arguments)
+            elif name == "cerebro_remember":
+                result = self._remember(arguments)
+            elif name == "cerebro_gc":
+                result = self._gc(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -519,6 +581,37 @@ class CerebroMCP:
         )
 
         return self.memory_diff.generate_report(result, format=format)
+
+    def _dream(self, args: Dict[str, Any]) -> str:
+        """Extração automática de memórias"""
+        since_days = args.get("since_days", 7)
+        dry_run = args.get("dry_run", True)
+
+        memory_dir = get_auto_mem_path()
+        result = run_dream(memory_dir=memory_dir, since_days=since_days, dry_run=dry_run)
+        return generate_dream_report(result)
+
+    def _remember(self, args: Dict[str, Any]) -> str:
+        """Revisão e promoção de memórias"""
+        dry_run = args.get("dry_run", True)
+
+        report = run_remember(dry_run=dry_run)
+        return generate_remember_report(report)
+
+    def _gc(self, args: Dict[str, Any]) -> str:
+        """Garbage collection de memórias"""
+        threshold_days = args.get("threshold_days", 7)
+        dry_run = args.get("dry_run", True)
+
+        memory_dir = get_auto_mem_path()
+        gc = GarbageCollector(memory_dir)
+        results = gc.run_gc(
+            memory_dir=memory_dir,
+            archive_threshold_days=threshold_days,
+            deletion_threshold_days=threshold_days * 4,
+            dry_run=dry_run
+        )
+        return gc.generate_gc_report(results)
 
 
 async def main():

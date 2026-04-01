@@ -19,6 +19,9 @@ from src.index.metadata_db import MetadataDB
 from src.index.embeddings_db import EmbeddingsDB
 from src.index.queries import QueryEngine
 from src.diff.memory_diff import MemoryDiff, MemoryDiffResult
+from src.consolidation.dream import run_dream, generate_dream_report
+from src.consolidation.remember import run_remember, generate_remember_report
+from src.forgetting.gc import GarbageCollector
 
 
 class CerebroCLI:
@@ -352,6 +355,63 @@ class CerebroCLI:
 
         return report
 
+    def dream(self, since_days: int = 7, dry_run: bool = True) -> str:
+        """
+        Extração automática de memórias.
+
+        Args:
+            since_days: Dias para analisar
+            dry_run: Se True, apenas simula
+
+        Returns:
+            Relatório da extração
+        """
+        from src.core.paths import get_auto_mem_path
+        from src.consolidation.dream import run_dream, generate_dream_report
+
+        memory_dir = get_auto_mem_path()
+        result = run_dream(memory_dir=memory_dir, since_days=since_days, dry_run=dry_run)
+        return generate_dream_report(result)
+
+    def remember(self, dry_run: bool = True) -> str:
+        """
+        Revisão e promoção de memórias.
+
+        Args:
+            dry_run: Se True, apenas gera relatório
+
+        Returns:
+            Relatório do remember
+        """
+        from src.consolidation.remember import run_remember, generate_remember_report
+
+        report = run_remember(dry_run=dry_run)
+        return generate_remember_report(report)
+
+    def gc_cmd(self, threshold_days: int = 7, dry_run: bool = True) -> str:
+        """
+        Garbage collection de memórias.
+
+        Args:
+            threshold_days: Dias para considerar memória stale
+            dry_run: Se True, apenas lista candidatas
+
+        Returns:
+            Relatório do GC
+        """
+        from src.core.paths import get_auto_mem_path
+        from src.forgetting.gc import GarbageCollector
+
+        memory_dir = get_auto_mem_path()
+        gc = GarbageCollector(memory_dir)
+        results = gc.run_gc(
+            memory_dir=memory_dir,
+            archive_threshold_days=threshold_days,
+            deletion_threshold_days=threshold_days * 4,
+            dry_run=dry_run
+        )
+        return gc.generate_gc_report(results)
+
 
 def main():
     """Entry point da CLI"""
@@ -395,12 +455,6 @@ def main():
     promote_parser.add_argument("--type", default="session", help="Tipo do draft")
     promote_parser.add_argument("--to", dest="promote_to", default="decision", help="Tipo de promoção")
 
-    # Comando: gc
-    gc_parser = subparsers.add_parser("gc", help="Garbage collection")
-    gc_parser.add_argument("--project", help="Nome do projeto")
-    gc_parser.add_argument("--dry-run", action="store_true", default=True, help="Apenas simular")
-    gc_parser.add_argument("--apply", action="store_false", dest="dry_run", help="Aplicar GC")
-
     # Comando: setup
     setup_parser = subparsers.add_parser("setup", help="Configurar MCP Server e projeto automaticamente")
     setup_parser.add_argument("subcommand", nargs="?", choices=["claude", "hooks", "init"], default="all",
@@ -419,6 +473,20 @@ def main():
     diff_parser.add_argument("--gc-threshold", type=float, default=0.3, help="Threshold para GC risk (padrão: 0.3)")
     diff_parser.add_argument("--output", type=Path, help="Arquivo de saída")
     diff_parser.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Formato de saída")
+
+    # Comando: dream
+    dream_parser = subparsers.add_parser("dream", help="Extração automática de memórias")
+    dream_parser.add_argument("--since", type=int, default=7, dest="since_days", help="Dias para analisar (padrão: 7)")
+    dream_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar extração (padrão: dry-run)")
+
+    # Comando: remember
+    remember_parser = subparsers.add_parser("remember", help="Revisão e promoção de memórias")
+    remember_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar promoções (padrão: dry-run)")
+
+    # Comando: gc
+    gc_parser = subparsers.add_parser("gc", help="Garbage collection de memórias")
+    gc_parser.add_argument("--threshold", type=int, default=7, dest="threshold_days", help="Dias para considerar memória stale (padrão: 7)")
+    gc_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar GC (padrão: dry-run)")
 
     args = parser.parse_args()
 
@@ -467,8 +535,6 @@ def main():
         )
     elif args.command == "promote":
         result = cli.promote(args.project, args.draft_id, args.type, args.promote_to)
-    elif args.command == "gc":
-        result = cli.gc(args.project, args.dry_run)
     elif args.command == "status":
         result = cli.status()
     elif args.command == "diff":
@@ -481,6 +547,12 @@ def main():
             output=args.output,
             format=args.format
         )
+    elif args.command == "dream":
+        result = cli.dream(since_days=args.since_days, dry_run=not args.apply)
+    elif args.command == "remember":
+        result = cli.remember(dry_run=not args.apply)
+    elif args.command == "gc":
+        result = cli.gc_cmd(threshold_days=args.threshold_days, dry_run=not args.apply)
     else:
         parser.print_help()
         sys.exit(1)
