@@ -9,22 +9,51 @@
 const { execSync, spawn } = require('child_process');
 const path = require('path');
 
-// Determina o comando Python
+// Determina o comando Python e valida versão
 function getPythonCmd() {
+    const candidates = [];
+
+    // Tenta python primeiro
     try {
-        // Tenta python primeiro
         execSync('python --version', { stdio: 'ignore' });
-        return 'python';
+        candidates.push('python');
     } catch {
+        // Tenta python3
         try {
-            // Tenta python3
             execSync('python3 --version', { stdio: 'ignore' });
-            return 'python3';
+            candidates.push('python3');
         } catch {
             console.error('Erro: Python não encontrado. Por favor instale Python 3.10+');
             process.exit(1);
         }
     }
+
+    // Valida versão do Python
+    for (const cmd of candidates) {
+        try {
+            const versionOutput = execSync(`${cmd} --version`, {
+                encoding: 'utf-8',
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+            const match = versionOutput.match(/Python (\d+)\.(\d+)/);
+            if (match) {
+                const major = parseInt(match[1]);
+                const minor = parseInt(match[2]);
+                if (major < 3 || (major === 3 && minor < 10)) {
+                    console.error(`❌ Python ${major}.${minor} detectado.`);
+                    console.error('   OCerebro requer Python 3.10+');
+                    console.error('   Baixe em: https://python.org');
+                    process.exit(1);
+                }
+                return cmd;
+            }
+        } catch (err) {
+            continue;
+        }
+    }
+
+    // Fallback para o primeiro candidato
+    return candidates[0];
 }
 
 // Encontra o caminho do pacote ocerebro

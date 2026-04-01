@@ -12,6 +12,11 @@ worktrees/
 # Legado
 .cerebro/
 
+# Configurações com possíveis credenciais
+cerebro/config.yaml
+.ocerebro_config
+*.json.bak
+
 # Python
 __pycache__/
 *.py[cod]

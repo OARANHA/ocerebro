@@ -106,7 +106,12 @@ def get_ocerebro_path() -> Path:
 
 
 def generate_mcp_config(ocerebro_path: Path) -> dict:
-    """Gera configuração MCP para o OCerebro com suporte robusto a paths e env vars."""
+    """Gera configuração MCP para o OCerebro com suporte robusto a paths.
+
+    SECURITY: Não salva API keys no config file.
+    As variáveis de ambiente são herdadas do sistema.
+    Configure no seu shell: ~/.bashrc ou ~/.zshrc
+    """
 
     # Determina o comando Python
     python_cmd = sys.executable
@@ -126,16 +131,9 @@ def generate_mcp_config(ocerebro_path: Path) -> dict:
     if mcp_server.exists():
         mcp_config["args"] = [str(mcp_server)]
 
-    # Injeta variáveis de ambiente do usuário
-    env_vars = {}
-    for key in ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
-                "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
-                "CEREBRO_MODEL"]:
-        val = os.environ.get(key)
-        if val:
-            env_vars[key] = val
-
-    mcp_config["env"] = env_vars
+    # SECURITY: NÃO salvar API keys no config
+    # As variáveis de ambiente são herdadas automaticamente do shell
+    mcp_config["env"] = {}
 
     return {
         "mcpServers": {
@@ -290,6 +288,10 @@ def setup_claude_desktop() -> bool:
     print()
     print("[OK] OCerebro configurado em:", ", ".join(configured) if configured else "Nenhum")
     print()
+    print("⚠️  API keys NÃO foram salvas no config.")
+    print("   Configure no seu shell:")
+    print("   export ANTHROPIC_AUTH_TOKEN=sua-key")
+    print()
     print("Próximos passos:")
     print("  1. Reinicie o Claude (Desktop ou Code)")
     print("  2. As ferramentas do OCerebro estarão disponíveis:")
@@ -358,10 +360,24 @@ hooks:
 
 
 def setup_ocerebro_dir(project_path: Path | None = None) -> bool:
-    """Cria diretório .ocerebro no projeto"""
+    """Cria diretório .ocerebro no projeto.
+
+    SECURITY: Valida path traversal - só permite paths dentro de home ou cwd.
+    """
 
     if project_path is None:
         project_path = Path.cwd()
+
+    # Validação de segurança: path deve ser dentro de home ou cwd
+    project_path = project_path.resolve()
+    home = Path.home().resolve()
+    cwd = Path.cwd().resolve()
+
+    if not (str(project_path).startswith(str(home)) or
+            str(project_path).startswith(str(cwd))):
+        print(f"❌ Erro: path '{project_path}' fora do diretório permitido.")
+        print(f"   Permitido: dentro de {home} ou {cwd}")
+        return False
 
     ocerebro_dir = project_path / ".ocerebro"
 
