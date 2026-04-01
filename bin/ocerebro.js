@@ -59,15 +59,24 @@ function getPythonCmd() {
 // Encontra o caminho do pacote ocerebro
 function getOcerebroPath(pythonCmd) {
     try {
-        // Tenta encontrar via pip show
-        const output = execSync(`${pythonCmd} -m pip show ocerebro`, { encoding: 'utf-8' });
-        const match = output.match(/Location: (.+)/);
-        if (match) {
-            return path.join(match[1].trim(), 'ocerebro');
-        }
+        // Usa -c para obter o path real do módulo instalado
+        const output = execSync(
+            `${pythonCmd} -c "import src.cli.main; import os; print(os.path.dirname(os.path.dirname(os.path.dirname(src.cli.main.__file__))))"`,
+            { encoding: 'utf-8' }
+        );
+        return output.trim();
     } catch {
-        // Se não estiver instalado via pip, usa path relativo
-        return path.join(__dirname, '..');
+        // Fallback: usa pip show para encontrar o Location
+        try {
+            const pipOutput = execSync(`${pythonCmd} -m pip show ocerebro`, { encoding: 'utf-8' });
+            const match = pipOutput.match(/Location: (.+)/);
+            if (match) {
+                return match[1].trim(); // sem subpasta "ocerebro/"
+            }
+        } catch {
+            // Se não estiver instalado via pip, usa path relativo ao bin/
+            return path.join(__dirname, '..');
+        }
     }
     return path.join(__dirname, '..');
 }
