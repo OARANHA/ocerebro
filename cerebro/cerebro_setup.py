@@ -1,4 +1,4 @@
-"""Setup automtico do Cerebro
+"""Setup automtico do OCerebro
 
 Detecta e configura o Claude Desktop automaticamente.
 """
@@ -47,33 +47,33 @@ def find_claude_desktop_config() -> Path | None:
     return locations[0] if locations else None
 
 
-def get_cerebro_path() -> Path:
-    """Retorna o caminho absoluto do Cerebro instalado"""
+def get_ocerebro_path() -> Path:
+    """Retorna o caminho absoluto do OCerebro instalado"""
     # Tenta encontrar o package instalado
-    import cerebro
-    cerebro_path = Path(cerebro.__file__).parent
-    return cerebro_path.resolve()
+    import ocerebro
+    ocerebro_path = Path(ocerebro.__file__).parent
+    return ocerebro_path.resolve()
 
 
-def generate_mcp_config(cerebro_path: Path) -> dict:
-    """Gera configurao MCP para o Cerebro"""
+def generate_mcp_config(ocerebro_path: Path) -> dict:
+    """Gera configurao MCP para o OCerebro"""
 
     # Determina o comando Python
     python_cmd = sys.executable
 
     # Caminho do servidor MCP
-    mcp_server = cerebro_path / "src" / "mcp" / "server.py"
+    mcp_server = ocerebro_path / "src" / "mcp" / "server.py"
 
     if not mcp_server.exists():
         # Tenta encontrar em outras localizaes
-        mcp_server = cerebro_path.parent / "src" / "mcp" / "server.py"
+        mcp_server = ocerebro_path.parent / "src" / "mcp" / "server.py"
 
     return {
         "mcpServers": {
-            "cerebro": {
+            "ocerebro": {
                 "command": python_cmd,
                 "args": [str(mcp_server)],
-                "cwd": str(cerebro_path.parent),
+                "cwd": str(ocerebro_path.parent),
                 "env": {}
             }
         }
@@ -98,7 +98,7 @@ def merge_configs(existing: dict, new: dict) -> dict:
     if "mcpServers" not in result:
         result["mcpServers"] = {}
 
-    # Adiciona/Atualiza servidor cerebro
+    # Adiciona/Atualiza servidor ocerebro
     if "mcpServers" in new:
         for name, config in new["mcpServers"].items():
             result["mcpServers"][name] = config
@@ -110,7 +110,7 @@ def setup_claude_desktop() -> bool:
     """Configura o Claude Desktop automaticamente"""
 
     print("=" * 60)
-    print("Cerebro - Setup Automtico")
+    print("OCerebro - Setup Automtico")
     print("=" * 60)
     print()
 
@@ -129,12 +129,12 @@ def setup_claude_desktop() -> bool:
     # Garante que o diretrio existe
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Pega caminho do Cerebro
-    cerebro_path = get_cerebro_path()
-    print(f" Cerebro instalado: {cerebro_path}")
+    # Pega caminho do OCerebro
+    ocerebro_path = get_ocerebro_path()
+    print(f" OCerebro instalado: {ocerebro_path}")
 
     # Gera nova configurao
-    new_config = generate_mcp_config(cerebro_path)
+    new_config = generate_mcp_config(ocerebro_path)
 
     # L configurao existente se houver
     existing_config = {}
@@ -157,17 +157,17 @@ def setup_claude_desktop() -> bool:
     )
 
     print()
-    print("[OK] Cerebro configurado no Claude Desktop!")
+    print("[OK] OCerebro configurado no Claude Desktop!")
     print()
     print("Prximos passos:")
     print("  1. Reinicie o Claude Desktop")
-    print("  2. As ferramentas do Cerebro estaro disponveis:")
-    print("     - cerebro_memory")
-    print("     - cerebro_search")
-    print("     - cerebro_checkpoint")
-    print("     - cerebro_promote")
-    print("     - cerebro_status")
-    print("     - cerebro_hooks")
+    print("  2. As ferramentas do OCerebro estaro disponveis:")
+    print("     - ocerebro_memory")
+    print("     - ocerebro_search")
+    print("     - ocerebro_checkpoint")
+    print("     - ocerebro_promote")
+    print("     - ocerebro_status")
+    print("     - ocerebro_hooks")
     print()
     print("=" * 60)
 
@@ -186,8 +186,8 @@ def setup_hooks(project_path: Path | None = None) -> bool:
         print(f" hooks.yaml j existe em {project_path}")
         return False
 
-    example_config = """# Cerebro Hooks Configuration
-# Docs: https://github.com/OARANHA/cerebro/blob/main/docs/HOOKS_GUIDE.md
+    example_config = """# OCerebro Hooks Configuration
+# Docs: https://github.com/OARANHA/ocerebro/blob/main/docs/HOOKS_GUIDE.md
 
 hooks:
   # Exemplo: Notificao de erros crticos
@@ -222,27 +222,27 @@ hooks:
     return True
 
 
-def setup_cerebro_dir(project_path: Path | None = None) -> bool:
-    """Cria diretrio .cerebro no projeto"""
+def setup_ocerebro_dir(project_path: Path | None = None) -> bool:
+    """Cria diretrio .ocerebro no projeto"""
 
     if project_path is None:
         project_path = Path.cwd()
 
-    cerebro_dir = project_path / ".cerebro"
+    ocerebro_dir = project_path / ".ocerebro"
 
-    if cerebro_dir.exists():
-        print(f"[OK] Diretrio .cerebro j existe")
+    if ocerebro_dir.exists():
+        print(f"[OK] Diretrio .ocerebro j existe")
         return True
 
     # Cria estrutura
-    (cerebro_dir / "raw").mkdir(parents=True)
-    (cerebro_dir / "working").mkdir(parents=True)
-    (cerebro_dir / "official").mkdir(parents=True)
-    (cerebro_dir / "index").mkdir(parents=True)
-    (cerebro_dir / "config").mkdir(parents=True)
+    (ocerebro_dir / "raw").mkdir(parents=True)
+    (ocerebro_dir / "working").mkdir(parents=True)
+    (ocerebro_dir / "official").mkdir(parents=True)
+    (ocerebro_dir / "index").mkdir(parents=True)
+    (ocerebro_dir / "config").mkdir(parents=True)
 
-    # Cria .gitignore dentro do .cerebro
-    gitignore = cerebro_dir / ".gitignore"
+    # Cria .gitignore dentro do .ocerebro
+    gitignore = ocerebro_dir / ".gitignore"
     gitignore.write_text("""# Raw events (muito grandes)
 raw/
 
@@ -256,7 +256,7 @@ index/
 config/local.yaml
 """, encoding="utf-8")
 
-    print(f"[OK] Diretrio .cerebro criado em {project_path}")
+    print(f"[OK] Diretrio .ocerebro criado em {project_path}")
     print(f"   - raw/ (eventos brutos)")
     print(f"   - working/ (rascunhos)")
     print(f"   - official/ (memria permanente)")
@@ -283,11 +283,11 @@ def main():
 
         elif subcommand == "init":
             project = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.cwd()
-            setup_cerebro_dir(project)
+            setup_ocerebro_dir(project)
             setup_hooks(project)
             print()
             print("Setup completo! Agora execute:")
-            print("  cerebro setup claude")
+            print("  ocerebro setup claude")
             sys.exit(0)
 
         else:
@@ -298,7 +298,7 @@ def main():
     print("Executando setup completo...")
     print()
 
-    setup_cerebro_dir()
+    setup_ocerebro_dir()
     setup_hooks()
     setup_claude_desktop()
 
