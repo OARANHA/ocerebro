@@ -1,4 +1,4 @@
-"""Setup automático do Cerebro
+"""Setup automtico do Cerebro
 
 Detecta e configura o Claude Desktop automaticamente.
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def find_claude_desktop_config() -> Path | None:
-    """Encontra o arquivo claude_desktop.json em várias localizações"""
+    """Encontra o arquivo claude_desktop.json em vrias localizaes"""
 
     locations = []
 
@@ -43,7 +43,7 @@ def find_claude_desktop_config() -> Path | None:
         if loc.parent.exists():
             return loc
 
-    # Retorna o primeiro mesmo se não existe (criamos o arquivo)
+    # Retorna o primeiro mesmo se no existe (criamos o arquivo)
     return locations[0] if locations else None
 
 
@@ -56,7 +56,7 @@ def get_cerebro_path() -> Path:
 
 
 def generate_mcp_config(cerebro_path: Path) -> dict:
-    """Gera configuração MCP para o Cerebro"""
+    """Gera configurao MCP para o Cerebro"""
 
     # Determina o comando Python
     python_cmd = sys.executable
@@ -65,7 +65,7 @@ def generate_mcp_config(cerebro_path: Path) -> dict:
     mcp_server = cerebro_path / "src" / "mcp" / "server.py"
 
     if not mcp_server.exists():
-        # Tenta encontrar em outras localizações
+        # Tenta encontrar em outras localizaes
         mcp_server = cerebro_path.parent / "src" / "mcp" / "server.py"
 
     return {
@@ -81,7 +81,7 @@ def generate_mcp_config(cerebro_path: Path) -> dict:
 
 
 def backup_config(config_path: Path) -> Path | None:
-    """Cria backup do arquivo de configuração"""
+    """Cria backup do arquivo de configurao"""
     if not config_path.exists():
         return None
 
@@ -92,7 +92,7 @@ def backup_config(config_path: Path) -> Path | None:
 
 
 def merge_configs(existing: dict, new: dict) -> dict:
-    """Faz merge das configurações MCP"""
+    """Faz merge das configuraes MCP"""
     result = existing.copy()
 
     if "mcpServers" not in result:
@@ -110,47 +110,47 @@ def setup_claude_desktop() -> bool:
     """Configura o Claude Desktop automaticamente"""
 
     print("=" * 60)
-    print("Cerebro - Setup Automático")
+    print("Cerebro - Setup Automtico")
     print("=" * 60)
     print()
 
-    # Encontra configuração do Claude
+    # Encontra configurao do Claude
     config_path = find_claude_desktop_config()
 
     if config_path is None:
-        print(" Não foi possível localizar o Claude Desktop.")
+        print(" No foi possvel localizar o Claude Desktop.")
         print()
         print("Por favor, instale o Claude Desktop primeiro:")
         print("  https://claude.ai/download")
         return False
 
-    print(f"📁 Config do Claude: {config_path}")
+    print(f" Config do Claude: {config_path}")
 
-    # Garante que o diretório existe
+    # Garante que o diretrio existe
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Pega caminho do Cerebro
     cerebro_path = get_cerebro_path()
-    print(f"📁 Cerebro instalado: {cerebro_path}")
+    print(f" Cerebro instalado: {cerebro_path}")
 
-    # Gera nova configuração
+    # Gera nova configurao
     new_config = generate_mcp_config(cerebro_path)
 
-    # Lê configuração existente se houver
+    # L configurao existente se houver
     existing_config = {}
     if config_path.exists():
-        print(f"📄 Configuração existente encontrada")
+        print(f" Configurao existente encontrada")
         backup_config(config_path)
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            print(f" Erro ao ler configuração existente: {e}")
+            print(f" Erro ao ler configurao existente: {e}")
             existing_config = {}
 
     # Faz merge
     merged_config = merge_configs(existing_config, new_config)
 
-    # Escreve nova configuração
+    # Escreve nova configurao
     config_path.write_text(
         json.dumps(merged_config, indent=2, ensure_ascii=False),
         encoding="utf-8"
@@ -159,9 +159,9 @@ def setup_claude_desktop() -> bool:
     print()
     print("[OK] Cerebro configurado no Claude Desktop!")
     print()
-    print("Próximos passos:")
+    print("Prximos passos:")
     print("  1. Reinicie o Claude Desktop")
-    print("  2. As ferramentas do Cerebro estarão disponíveis:")
+    print("  2. As ferramentas do Cerebro estaro disponveis:")
     print("     - cerebro_memory")
     print("     - cerebro_search")
     print("     - cerebro_checkpoint")
@@ -183,14 +183,14 @@ def setup_hooks(project_path: Path | None = None) -> bool:
     hooks_yaml = project_path / "hooks.yaml"
 
     if hooks_yaml.exists():
-        print(f" hooks.yaml já existe em {project_path}")
+        print(f" hooks.yaml j existe em {project_path}")
         return False
 
     example_config = """# Cerebro Hooks Configuration
 # Docs: https://github.com/OARANHA/cerebro/blob/main/docs/HOOKS_GUIDE.md
 
 hooks:
-  # Exemplo: Notificação de erros críticos
+  # Exemplo: Notificao de erros crticos
   - name: error_notification
     event_type: error
     module_path: hooks/error_hook.py
@@ -211,19 +211,19 @@ hooks:
 
     hooks_yaml.write_text(example_config, encoding="utf-8")
 
-    # Cria diretório hooks/ com __init__.py
+    # Cria diretrio hooks/ com __init__.py
     hooks_dir = project_path / "hooks"
     hooks_dir.mkdir(exist_ok=True)
     (hooks_dir / "__init__.py").write_text('"""Hooks customizados do projeto"""', encoding="utf-8")
 
     print(f"[OK] hooks.yaml criado em {project_path}")
-    print(f"[OK] Diretório hooks/ criado")
+    print(f"[OK] Diretrio hooks/ criado")
 
     return True
 
 
 def setup_cerebro_dir(project_path: Path | None = None) -> bool:
-    """Cria diretório .cerebro no projeto"""
+    """Cria diretrio .cerebro no projeto"""
 
     if project_path is None:
         project_path = Path.cwd()
@@ -231,7 +231,7 @@ def setup_cerebro_dir(project_path: Path | None = None) -> bool:
     cerebro_dir = project_path / ".cerebro"
 
     if cerebro_dir.exists():
-        print(f"[OK] Diretório .cerebro já existe")
+        print(f"[OK] Diretrio .cerebro j existe")
         return True
 
     # Cria estrutura
@@ -256,18 +256,18 @@ index/
 config/local.yaml
 """, encoding="utf-8")
 
-    print(f"[OK] Diretório .cerebro criado em {project_path}")
+    print(f"[OK] Diretrio .cerebro criado em {project_path}")
     print(f"   - raw/ (eventos brutos)")
     print(f"   - working/ (rascunhos)")
-    print(f"   - official/ (memória permanente)")
+    print(f"   - official/ (memria permanente)")
     print(f"   - index/ (banco de dados)")
-    print(f"   - config/ (configurações)")
+    print(f"   - config/ (configuraes)")
 
     return True
 
 
 def main():
-    """Função principal de setup"""
+    """Funo principal de setup"""
 
     if len(sys.argv) > 1:
         subcommand = sys.argv[1]
@@ -294,7 +294,7 @@ def main():
             print(f"Subcomando desconhecido: {subcommand}")
             sys.exit(1)
 
-    # Setup completo padrão
+    # Setup completo padro
     print("Executando setup completo...")
     print()
 
