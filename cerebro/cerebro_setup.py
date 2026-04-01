@@ -87,7 +87,7 @@ def backup_config(config_path: Path) -> Path | None:
 
     backup_path = config_path.with_suffix(".json.bak")
     backup_path.write_text(config_path.read_text(encoding="utf-8"), encoding="utf-8")
-    print(f"✓ Backup criado: {backup_path}")
+    print(f"[OK] Backup criado: {backup_path}")
     return backup_path
 
 
@@ -118,7 +118,7 @@ def setup_claude_desktop() -> bool:
     config_path = find_claude_desktop_config()
 
     if config_path is None:
-        print("❌ Não foi possível localizar o Claude Desktop.")
+        print(" Não foi possível localizar o Claude Desktop.")
         print()
         print("Por favor, instale o Claude Desktop primeiro:")
         print("  https://claude.ai/download")
@@ -144,7 +144,7 @@ def setup_claude_desktop() -> bool:
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            print(f"⚠️ Erro ao ler configuração existente: {e}")
+            print(f" Erro ao ler configuração existente: {e}")
             existing_config = {}
 
     # Faz merge
@@ -157,7 +157,7 @@ def setup_claude_desktop() -> bool:
     )
 
     print()
-    print("✅ Cerebro configurado no Claude Desktop!")
+    print("[OK] Cerebro configurado no Claude Desktop!")
     print()
     print("Próximos passos:")
     print("  1. Reinicie o Claude Desktop")
@@ -183,7 +183,7 @@ def setup_hooks(project_path: Path | None = None) -> bool:
     hooks_yaml = project_path / "hooks.yaml"
 
     if hooks_yaml.exists():
-        print(f"⚠️ hooks.yaml já existe em {project_path}")
+        print(f" hooks.yaml já existe em {project_path}")
         return False
 
     example_config = """# Cerebro Hooks Configuration
@@ -216,8 +216,8 @@ hooks:
     hooks_dir.mkdir(exist_ok=True)
     (hooks_dir / "__init__.py").write_text('"""Hooks customizados do projeto"""', encoding="utf-8")
 
-    print(f"✅ hooks.yaml criado em {project_path}")
-    print(f"✅ Diretório hooks/ criado")
+    print(f"[OK] hooks.yaml criado em {project_path}")
+    print(f"[OK] Diretório hooks/ criado")
 
     return True
 
@@ -231,7 +231,7 @@ def setup_cerebro_dir(project_path: Path | None = None) -> bool:
     cerebro_dir = project_path / ".cerebro"
 
     if cerebro_dir.exists():
-        print(f"✓ Diretório .cerebro já existe")
+        print(f"[OK] Diretório .cerebro já existe")
         return True
 
     # Cria estrutura
@@ -256,7 +256,7 @@ index/
 config/local.yaml
 """, encoding="utf-8")
 
-    print(f"✅ Diretório .cerebro criado em {project_path}")
+    print(f"[OK] Diretório .cerebro criado em {project_path}")
     print(f"   - raw/ (eventos brutos)")
     print(f"   - working/ (rascunhos)")
     print(f"   - official/ (memória permanente)")
