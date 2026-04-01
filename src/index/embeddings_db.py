@@ -32,6 +32,8 @@ class EmbeddingsDB:
         self.db_path = db_path
         self.model_name = model_name
         self._model = None
+        # Cria diretório pai se não existir
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_sqlite_vec()
         self._init_schema()
 

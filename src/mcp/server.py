@@ -48,14 +48,29 @@ class CerebroMCP:
     - cerebro_hooks: Listar e gerenciar hooks customizados
     """
 
+    @staticmethod
+    def _get_configured_path() -> Path:
+        """Lê o caminho configurado em ~/.ocerebro_config ou usa default."""
+        config_file = Path.home() / ".ocerebro_config"
+        if config_file.exists():
+            try:
+                content = config_file.read_text(encoding="utf-8")
+                for line in content.strip().splitlines():
+                    if line.startswith("base_path="):
+                        return Path(line.split("=", 1)[1].strip())
+            except Exception:
+                pass
+        # Fallback: .ocerebro no diretório atual
+        return Path(".ocerebro")
+
     def __init__(self, cerebro_path: Optional[Path] = None):
         """
         Inicializa o MCP Server.
 
         Args:
-            cerebro_path: Diretório base do OCerebro (default: .ocerebro)
+            cerebro_path: Diretório base do OCerebro (default: lê de ~/.ocerebro_config)
         """
-        self.cerebro_path = cerebro_path or Path(".ocerebro")
+        self.cerebro_path = cerebro_path or self._get_configured_path()
         self.cerebro_path.mkdir(parents=True, exist_ok=True)
 
         # Inicializa componentes

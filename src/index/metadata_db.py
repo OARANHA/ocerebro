@@ -21,6 +21,8 @@ class MetadataDB:
             db_path: Path para o arquivo do banco de dados
         """
         self.db_path = db_path
+        # Cria diretório pai se não existir
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
