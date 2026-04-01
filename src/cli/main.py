@@ -266,7 +266,7 @@ class CerebroCLI:
 
 def _run_init(project_path: Optional[Path] = None):
     """Lógica de init compartilhada entre 'init' e 'setup init'"""
-    from cerebro.cerebro_setup import setup_cerebro_dir, setup_hooks
+    from cerebro.cerebro_setup import setup_ocerebro_dir, setup_hooks
 
     print("Como quer usar o OCerebro?")
     print("  1. Neste projeto (cria .ocerebro/ aqui)")
@@ -285,7 +285,7 @@ def _run_init(project_path: Optional[Path] = None):
     config_file.write_text(f"base_path={base_path}\n", encoding="utf-8")
     print(f"✓ Configuração salva em {config_file}")
 
-    setup_cerebro_dir(base_path)
+    setup_ocerebro_dir(base_path)
     setup_hooks(base_path)
     print("\nSetup completo! Agora execute:")
     print("  ocerebro setup claude")
@@ -383,7 +383,7 @@ def main():
 
     # Comando setup
     if args.command == "setup":
-        from cerebro.cerebro_setup import setup_claude_desktop, setup_hooks, setup_cerebro_dir
+        from cerebro.cerebro_setup import setup_claude_desktop, setup_hooks, setup_ocerebro_dir
 
         if args.subcommand == "claude":
             success = setup_claude_desktop()
@@ -395,7 +395,7 @@ def main():
             _run_init(getattr(args, 'project', None))
             sys.exit(0)
         else:
-            setup_cerebro_dir(args.project)
+            setup_ocerebro_dir(args.project)
             setup_hooks(args.project)
             setup_claude_desktop()
             sys.exit(0)
