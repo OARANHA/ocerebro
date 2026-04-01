@@ -2,9 +2,11 @@
 
 import importlib.util
 import yaml
+import signal
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.core.event_schema import Event
 
@@ -18,6 +20,7 @@ class HookConfig:
     module_path: str
     function: str
     config: Dict[str, Any] = None
+    timeout: int = 5  # segundos - configurável por hook
 
 
 class HooksLoader:
@@ -75,18 +78,40 @@ class HooksLoader:
         """
         Carrega módulo Python dinamicamente.
 
+        SECURITY FIX: Valida path para evitar path traversal
+
         Args:
             module_path: Path do módulo relativo ao projeto
 
         Returns:
             Módulo carregado ou None
+
+        Raises:
+            PermissionError: Se path estiver fora do diretório permitido
+            ValueError: Se arquivo não for .py
         """
         if module_path in self._loaded_modules:
             return self._loaded_modules[module_path]
 
-        path = Path(module_path)
+        # SECURITY: Resolve path absoluto e verifica se está dentro do diretório permitido
+        path = Path(module_path).resolve()
+        allowed_root = self.config_path.parent.resolve()
+
+        try:
+            # Verifica se o path está dentro do diretório permitido (hooks.yaml location)
+            path.relative_to(allowed_root)
+        except ValueError:
+            raise PermissionError(
+                f"Hook path fora do diretório permitido: {path} "
+                f"(permitido: {allowed_root})"
+            )
+
         if not path.exists():
             return None
+
+        # SECURITY: Só permite arquivos .py
+        if path.suffix != ".py":
+            raise ValueError(f"Hook deve ser arquivo .py: {path}")
 
         spec = importlib.util.spec_from_file_location(
             f"hook_{path.stem}",
@@ -199,7 +224,9 @@ class HookRunner:
         event: Event
     ) -> Any:
         """
-        Executa um hook específico.
+        Executa um hook específico com timeout.
+
+        HIGH FIX: Adiciona timeout para evitar hooks travados
 
         Args:
             hook: Configuração do hook
@@ -207,6 +234,9 @@ class HookRunner:
 
         Returns:
             Resultado da execução
+
+        Raises:
+            TimeoutError: Se hook exceder timeout
         """
         module = self.loader.load_hook_module(hook)
 
@@ -220,14 +250,34 @@ class HookRunner:
                 f"Função {hook.function} não encontrada em {hook.module_path}"
             )
 
-        # Prepara argumentos
-        kwargs = {
-            "event": event,
-            "context": self.context,
-            "config": hook.config or {}
-        }
+        # TIMEOUT FIX: Executa hook em thread com timeout
+        timeout_seconds = (hook.config or {}).get("timeout", hook.timeout)
+        result_container = [None]
+        error_container = [None]
 
-        return func(**kwargs)
+        def run_hook():
+            try:
+                result_container[0] = func(
+                    event=event,
+                    context=self.context,
+                    config=hook.config or {}
+                )
+            except Exception as e:
+                error_container[0] = e
+
+        thread = threading.Thread(target=run_hook, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout_seconds)
+
+        if thread.is_alive():
+            raise TimeoutError(
+                f"Hook '{hook.name}' excedeu timeout de {timeout_seconds}s"
+            )
+
+        if error_container[0] is not None:
+            raise error_container[0]
+
+        return result_container[0]
 
     def register_callback(
         self,

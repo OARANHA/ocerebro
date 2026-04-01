@@ -9,6 +9,14 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+
+def _safe_print_error(msg: str) -> None:
+    """Print seguro para stderr com fallback de encoding."""
+    try:
+        print(msg, file=sys.stderr)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", errors="replace").decode("ascii"), file=sys.stderr)
+
 from src.core.jsonl_storage import JSONLStorage
 from src.core.session_manager import SessionManager
 from src.working.yaml_storage import YAMLStorage
@@ -79,8 +87,8 @@ class CerebroMCP:
             self.hooks_loader = HooksLoader(hooks_config) if hooks_config.exists() else None
             self.hooks_runner = HookRunner(self.hooks_loader) if self.hooks_loader else None
         except Exception as e:
-            import sys
-            print(f"[CEREBRO] Aviso: hooks.yaml com erro ({e}). Hooks desativados.", file=sys.stderr)
+            # WINDOWS FIX: Usa _safe_print_error para evitar UnicodeEncodeError
+            _safe_print_error(f"[CEREBRO] Aviso: hooks.yaml com erro ({e}). Hooks desativados.")
             self.hooks_loader = None
             self.hooks_runner = None
 

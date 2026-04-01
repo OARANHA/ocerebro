@@ -23,13 +23,24 @@ class TestHooksIntegration:
 
     def test_coverage_hook_execution(self, tmp_path):
         """Executa hook de coverage"""
+        # Cria hook mock no mesmo diretório que hooks.yaml
+        hook_file = tmp_path / "coverage_hook.py"
+        hook_file.write_text("""
+def on_test_result(event, context, config):
+    coverage = event.payload.get('coverage', 0)
+    min_coverage = config.get('min_coverage', 80)
+    if coverage < min_coverage:
+        return {'passed': False, 'action': 'warn'}
+    return {'passed': True, 'action': 'ok'}
+""")
+
         # Configura hook
         hooks_yaml = tmp_path / "hooks.yaml"
         hooks_yaml.write_text(yaml.dump({
             "hooks": [{
                 "name": "coverage_test",
                 "event_type": "test_result",
-                "module_path": str(Path("hooks/coverage_hook.py").absolute()),
+                "module_path": str(hook_file),
                 "function": "on_test_result",
                 "config": {"min_coverage": 80}
             }]
@@ -55,13 +66,28 @@ class TestHooksIntegration:
 
     def test_cost_hook_execution(self, tmp_path):
         """Executa hook de custo LLM"""
+        # Cria hook mock no mesmo diretório que hooks.yaml
+        hook_file = tmp_path / "cost_hook.py"
+        hook_file.write_text("""
+def on_llm_call(event, context, config):
+    accumulated = context.get('llm_cost_accumulated', 0)
+    cost = event.payload.get('cost', 0)
+    budget = config.get('monthly_budget', 100)
+    alert_at = config.get('alert_at_percentage', 80)
+    new_accumulated = accumulated + cost
+    percentage = (new_accumulated / budget) * 100
+    if percentage >= alert_at:
+        return {'alert': True, 'percentage': percentage, 'accumulated_cost': new_accumulated}
+    return {'alert': False, 'percentage': percentage, 'accumulated_cost': new_accumulated}
+""")
+
         hooks_yaml = tmp_path / "hooks.yaml"
         hooks_yaml.write_text(yaml.dump({
             "hooks": [{
                 "name": "cost_tracker",
                 "event_type": "tool_call",
                 "event_subtype": "llm",
-                "module_path": str(Path("hooks/cost_hook.py").absolute()),
+                "module_path": str(hook_file),
                 "function": "on_llm_call",
                 "config": {"monthly_budget": 100.0, "alert_at_percentage": 80}
             }]
@@ -91,12 +117,24 @@ class TestHooksIntegration:
 
     def test_error_hook_execution(self, tmp_path):
         """Executa hook de erro"""
+        # Cria hook mock
+        hook_file = tmp_path / "error_hook.py"
+        hook_file.write_text("""
+def on_error(event, context, config):
+    severity = event.payload.get('severity', 'low')
+    notify_severity = config.get('notify_severity', [])
+    channel = config.get('channel', 'email')
+    if severity in notify_severity:
+        return {'notified': True, 'should_notify': True, 'notification': f'Sending to {channel}'}
+    return {'notified': False, 'should_notify': False}
+""")
+
         hooks_yaml = tmp_path / "hooks.yaml"
         hooks_yaml.write_text(yaml.dump({
             "hooks": [{
                 "name": "error_notifier",
                 "event_type": "error",
-                "module_path": str(Path("hooks/error_hook.py").absolute()),
+                "module_path": str(hook_file),
                 "function": "on_error",
                 "config": {
                     "notify_severity": ["critical", "high"],
@@ -130,12 +168,22 @@ class TestHooksIntegration:
 
     def test_global_logger_hook(self, tmp_path):
         """Executa hook global logger"""
+        # Cria hook mock
+        hook_file = tmp_path / "global_logger.py"
+        hook_file.write_text("""
+def on_any_event(event, context, config):
+    exclude_subtypes = config.get('exclude_subtypes', [])
+    if event.subtype in exclude_subtypes:
+        return {'logged': False, 'skipped': True}
+    return {'logged': True, 'skipped': False}
+""")
+
         hooks_yaml = tmp_path / "hooks.yaml"
         hooks_yaml.write_text(yaml.dump({
             "hooks": [{
                 "name": "global_logger",
                 "event_type": "*",
-                "module_path": str(Path("hooks/global_logger.py").absolute()),
+                "module_path": str(hook_file),
                 "function": "on_any_event",
                 "config": {"exclude_subtypes": ["heartbeat"]}
             }]

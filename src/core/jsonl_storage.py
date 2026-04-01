@@ -35,13 +35,15 @@ class JSONLStorage:
         Retorna o arquivo JSONL atual para um projeto.
 
         O arquivo é nomeado com o mês atual: events-YYYY-MM.jsonl
+
+        WINDOWS FIX: Usa datetime.now(timezone.utc) ao invés de utcnow() deprecated
         """
         project_dir = self._get_project_dir(project)
         project_dir.mkdir(parents=True, exist_ok=True)
 
-        # Usa os primeiros 7 caracteres do timestamp (YYYY-MM)
-        from datetime import datetime
-        month_str = datetime.utcnow().strftime("%Y-%m")
+        # WINDOWS FIX: datetime.now(timezone.utc) ao invés de datetime.utcnow()
+        from datetime import datetime, timezone
+        month_str = datetime.now(timezone.utc).strftime("%Y-%m")
         return project_dir / f"events-{month_str}.jsonl"
 
     def append(self, event: Event) -> None:
@@ -79,6 +81,45 @@ class JSONLStorage:
                         events.append(Event.model_validate_json(line))
 
         return events
+
+    def read_iter(self, project: str):
+        """
+        Gerador — não carrega tudo em memória.
+
+        PERFORMANCE FIX: Permite iterar sobre eventos sem carregar todos em memória
+
+        Args:
+            project: Nome do projeto
+
+        Yields:
+            Eventos um por um
+        """
+        project_dir = self._get_project_dir(project)
+        if not project_dir.exists():
+            return
+
+        for jsonl_file in sorted(project_dir.glob("events-*.jsonl")):
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        yield Event.model_validate_json(line)
+
+    def read_last_n(self, project: str, n: int = 1000) -> List[Event]:
+        """
+        Lê apenas os N eventos mais recentes.
+
+        PERFORMANCE FIX: Usa deque com maxlen para memória constante O(n)
+
+        Args:
+            project: Nome do projeto
+            n: Número máximo de eventos (padrão: 1000)
+
+        Returns:
+            Lista dos N eventos mais recentes
+        """
+        from collections import deque
+        return list(deque(self.read_iter(project), maxlen=n))
 
     def read_since(self, project: str, since: str) -> List[Event]:
         """
@@ -132,6 +173,8 @@ class JSONLStorage:
         """
         Lê eventos em um intervalo de IDs.
 
+        HIGH FIX: Valida existência dos IDs antes de filtrar
+
         Args:
             project: Nome do projeto
             start_id: ID inicial (inclusive)
@@ -139,10 +182,21 @@ class JSONLStorage:
 
         Returns:
             Lista de eventos no intervalo especificado
-        """
-        all_events = self.read(project)
 
-        # Filtra eventos no intervalo de IDs
+        Raises:
+            ValueError: Se start_id ou end_id não existirem
+        """
+        if not start_id or not end_id:
+            raise ValueError("start_id e end_id são obrigatórios")
+
+        all_events = self.read(project)
+        ids = {e.event_id for e in all_events}
+
+        if start_id not in ids:
+            raise ValueError(f"start_id não encontrado: {start_id}")
+        if end_id not in ids:
+            raise ValueError(f"end_id não encontrado: {end_id}")
+
         in_range = False
         result = []
 

@@ -106,17 +106,24 @@ class TestHooksLoader:
         assert len(loader.hooks) == 0
         assert loader._loaded_modules == {}
 
-    def test_load_module(self, sample_hook_module):
+    def test_load_module(self, tmp_path, sample_hook_module):
         """Carrega módulo dinamicamente"""
-        loader = HooksLoader(Path("nonexistent.yaml"))
+        # SECURITY FIX: Config path deve estar no mesmo diretório raiz que o módulo
+        config_path = tmp_path / "hooks.yaml"
+        config_path.write_text("hooks: []")
+
+        loader = HooksLoader(config_path)
         module = loader._load_module(sample_hook_module)
 
         assert module is not None
         assert hasattr(module, "execute")
 
-    def test_load_module_cached(self, sample_hook_module):
+    def test_load_module_cached(self, tmp_path, sample_hook_module):
         """Carregamento em cache"""
-        loader = HooksLoader(Path("nonexistent.yaml"))
+        config_path = tmp_path / "hooks.yaml"
+        config_path.write_text("hooks: []")
+
+        loader = HooksLoader(config_path)
 
         module1 = loader._load_module(sample_hook_module)
         module2 = loader._load_module(sample_hook_module)
@@ -125,10 +132,25 @@ class TestHooksLoader:
 
     def test_load_module_not_found(self, tmp_path):
         """Módulo não encontrado"""
-        loader = HooksLoader(Path("nonexistent.yaml"))
+        config_path = tmp_path / "hooks.yaml"
+        config_path.write_text("hooks: []")
+
+        loader = HooksLoader(config_path)
         result = loader._load_module(str(tmp_path / "nonexistent.py"))
 
         assert result is None
+
+    def test_load_module_path_traversal_blocked(self, tmp_path):
+        """SECURITY: Bloqueia path traversal fora do diretório permitido"""
+        config_path = tmp_path / "hooks.yaml"
+        config_path.write_text("hooks: []")
+
+        loader = HooksLoader(config_path)
+
+        # Tenta carregar módulo fora do diretório permitido
+        outside_module = Path("C:\\Windows\\System32\\calc.py")  # Path fora
+        with pytest.raises(PermissionError, match="fora do diretório permitido"):
+            loader._load_module(str(outside_module))
 
     def test_get_hooks_for_event_type(self, sample_hooks_yaml):
         """Filtra hooks por tipo de evento"""
@@ -229,7 +251,7 @@ class TestHookRunner:
             "hooks": [{
                 "name": "missing_hook",
                 "event_type": "test_result",
-                "module_path": "nonexistent.py",
+                "module_path": str(tmp_path / "nonexistent.py"),
                 "function": "execute"
             }]
         }))

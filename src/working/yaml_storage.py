@@ -1,8 +1,28 @@
 """Armazenamento YAML para camada Working"""
 
 import yaml
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+def _sanitize_name(name: str) -> str:
+    """
+    Remove caracteres inseguros de nomes de arquivo.
+
+    SECURITY FIX: Previne path traversal e nomes problemáticos
+
+    Args:
+        name: Nome original
+
+    Returns:
+        Nome sanitizado
+    """
+    sanitized = re.sub(r'[^\w\-.]', '_', name)
+    if sanitized != name:
+        import sys
+        print(f"[CEREBRO] Nome sanitizado: '{name}' → '{sanitized}'", file=sys.stderr)
+    return sanitized
 
 
 class YAMLStorage:
@@ -49,6 +69,10 @@ class YAMLStorage:
             session_id: ID da sessão
             data: Dados da sessão
         """
+        # SECURITY FIX: Sanitiza nomes
+        project = _sanitize_name(project)
+        session_id = _sanitize_name(session_id)
+
         dir_path = self._ensure_project_dir(project, "sessions")
         yaml_path = dir_path / f"{session_id}.yaml"
 
@@ -65,6 +89,8 @@ class YAMLStorage:
         """
         Lê sessão de YAML.
 
+        WINDOWS FIX: encoding="utf-8" explícito
+
         Args:
             project: Nome do projeto
             session_id: ID da sessão
@@ -72,31 +98,52 @@ class YAMLStorage:
         Returns:
             Dados da sessão ou None se não existir
         """
+        # SECURITY FIX: Sanitiza nomes
+        project = _sanitize_name(project)
+        session_id = _sanitize_name(session_id)
+
         yaml_path = self.base_path / project / "sessions" / f"{session_id}.yaml"
 
         if not yaml_path.exists():
             return None
 
-        return yaml.safe_load(yaml_path.read_text())
+        # WINDOWS FIX: encoding="utf-8" explícito
+        return yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
 
-    def list_sessions(self, project: str) -> List[Dict[str, Any]]:
+    def list_sessions(self, project: str, limit: int = 200, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Lista todas as sessões de um projeto.
 
+        PERFORMANCE FIX: Adiciona limit e status_filter para evitar carregar tudo
+
         Args:
             project: Nome do projeto
+            limit: Limite de sessões (padrão: 200)
+            status_filter: Filtrar por status (opcional)
 
         Returns:
             Lista de sessões
         """
+        # SECURITY FIX: Sanitiza nome do projeto
+        project = _sanitize_name(project)
+
         dir_path = self.base_path / project / "sessions"
 
         if not dir_path.exists():
             return []
 
         sessions = []
-        for yaml_file in sorted(dir_path.glob("*.yaml")):
-            sessions.append(yaml.safe_load(yaml_file.read_text()))
+        # PERFORMANCE: reverse=True para pegar mais recentes primeiro
+        for yaml_file in sorted(dir_path.glob("*.yaml"), reverse=True):
+            # WINDOWS FIX: encoding="utf-8" explícito
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+
+            if status_filter and data.get("status") != status_filter:
+                continue
+
+            sessions.append(data)
+            if len(sessions) >= limit:
+                break
 
         return sessions
 
@@ -109,6 +156,10 @@ class YAMLStorage:
             feature_name: Nome da feature
             data: Dados da feature
         """
+        # SECURITY FIX: Sanitiza nomes
+        project = _sanitize_name(project)
+        feature_name = _sanitize_name(feature_name)
+
         dir_path = self._ensure_project_dir(project, "features")
         yaml_path = dir_path / f"{feature_name}.yaml"
 
@@ -125,6 +176,8 @@ class YAMLStorage:
         """
         Lê feature de YAML.
 
+        WINDOWS FIX: encoding="utf-8" explícito
+
         Args:
             project: Nome do projeto
             feature_name: Nome da feature
@@ -132,30 +185,50 @@ class YAMLStorage:
         Returns:
             Dados da feature ou None se não existir
         """
+        # SECURITY FIX: Sanitiza nomes
+        project = _sanitize_name(project)
+        feature_name = _sanitize_name(feature_name)
+
         yaml_path = self.base_path / project / "features" / f"{feature_name}.yaml"
 
         if not yaml_path.exists():
             return None
 
-        return yaml.safe_load(yaml_path.read_text())
+        # WINDOWS FIX: encoding="utf-8" explícito
+        return yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
 
-    def list_features(self, project: str) -> List[Dict[str, Any]]:
+    def list_features(self, project: str, limit: int = 200, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Lista todas as features de um projeto.
 
+        PERFORMANCE FIX: Adiciona limit e status_filter
+
         Args:
             project: Nome do projeto
+            limit: Limite de features (padrão: 200)
+            status_filter: Filtrar por status (opcional)
 
         Returns:
             Lista de features
         """
+        # SECURITY FIX: Sanitiza nome do projeto
+        project = _sanitize_name(project)
+
         dir_path = self.base_path / project / "features"
 
         if not dir_path.exists():
             return []
 
         features = []
-        for yaml_file in sorted(dir_path.glob("*.yaml")):
-            features.append(yaml.safe_load(yaml_file.read_text()))
+        for yaml_file in sorted(dir_path.glob("*.yaml"), reverse=True):
+            # WINDOWS FIX: encoding="utf-8" explícito
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+
+            if status_filter and data.get("status") != status_filter:
+                continue
+
+            features.append(data)
+            if len(features) >= limit:
+                break
 
         return features
