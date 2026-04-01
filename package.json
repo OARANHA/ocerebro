@@ -4,7 +4,7 @@
   "description": "OCerebro - Sistema de Memoria para Agentes (Claude Code/MCP)",
   "main": "bin/ocerebro.js",
   "bin": {
-    "ocerebro": "./bin/ocerebro.js"
+    "ocerebro": "bin/ocerebro.js"
   },
   "scripts": {
     "test": "echo \"Run Python tests with: pytest\" && exit 0"
@@ -21,7 +21,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OARANHA/ocerebro.git"
+    "url": "git+https://github.com/OARANHA/ocerebro.git"
   },
   "homepage": "https://github.com/OARANHA/ocerebro#readme",
   "bugs": {
@@ -29,5 +29,21 @@
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "cerebro/",
+    "hooks/",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/*.pyo",
+    "!cerebro/config.yaml"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

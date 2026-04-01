@@ -1,0 +1,66 @@
+# Python cache (todos os níveis)
+**/__pycache__
+**/*.pyc
+**/*.pyo
+*.pyc
+*.pyo
+src/**/__pycache__
+cerebro/**/__pycache__
+hooks/**/__pycache__
+
+# Configurações com possíveis credenciais
+cerebro/config.yaml
+
+# Git
+.git/
+.gitignore
+
+# GitHub
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.venv/
+venv/
+.env
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Docs
+docs/
+
+# Worktrees
+.worktrees/
+worktrees/
+
+# Cerebro data (cada projeto tem o seu)
+.ocerebro/
+.cerebro/
+
+# Logs
+*.log
+
+# Databases
+index/*.db
+raw/**/*.jsonl
+
+# Backups
+*.bak
+*.json.bak
+
+# Config local
+.ocerebro_config
