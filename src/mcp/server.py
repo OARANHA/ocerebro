@@ -19,6 +19,7 @@ from src.consolidation.promoter import Promoter
 from src.index.metadata_db import MetadataDB
 from src.index.embeddings_db import EmbeddingsDB
 from src.index.queries import QueryEngine
+from src.hooks.custom_loader import HooksLoader, HookRunner
 
 
 class CerebroMCP:
@@ -31,6 +32,7 @@ class CerebroMCP:
     - cerebro_checkpoint: Criar checkpoint manual
     - cerebro_promote: Promover draft para official
     - cerebro_status: Status do sistema
+    - cerebro_hooks: Listar e gerenciar hooks customizados
     """
 
     def __init__(self, cerebro_path: Optional[Path] = None):
@@ -61,6 +63,11 @@ class CerebroMCP:
             self.official_storage,
             self.working_storage
         )
+
+        # Inicializa hooks
+        hooks_config = self.cerebro_path.parent / "hooks.yaml"
+        self.hooks_loader = HooksLoader(hooks_config) if hooks_config.exists() else None
+        self.hooks_runner = HookRunner(self.hooks_loader) if self.hooks_loader else None
 
     def get_tools(self) -> List[Tool]:
         """
@@ -169,6 +176,29 @@ class CerebroMCP:
                     "type": "object",
                     "properties": {}
                 }
+            ),
+            Tool(
+                name="cerebro_hooks",
+                description="Listar e gerenciar hooks customizados",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "Ação: list, test, info",
+                            "enum": ["list", "test", "info"],
+                            "default": "list"
+                        },
+                        "event_type": {
+                            "type": "string",
+                            "description": "Filtrar por tipo de evento"
+                        },
+                        "hook_name": {
+                            "type": "string",
+                            "description": "Nome do hook (para ação 'info')"
+                        }
+                    }
+                }
             )
         ]
 
@@ -194,6 +224,8 @@ class CerebroMCP:
                 result = self._promote(arguments)
             elif name == "cerebro_status":
                 result = self._status()
+            elif name == "cerebro_hooks":
+                result = self._hooks(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -320,6 +352,88 @@ class CerebroMCP:
         ]
 
         return "\n".join(lines)
+
+    def _hooks(self, args: Dict[str, Any]) -> str:
+        """Lista e gerencia hooks customizados"""
+        action = args.get("action", "list")
+        event_type = args.get("event_type")
+        hook_name = args.get("hook_name")
+
+        if self.hooks_loader is None:
+            return "Hooks não configurados. Crie um arquivo hooks.yaml na raiz do projeto."
+
+        if action == "list":
+            hooks = self.hooks_loader.hooks
+
+            if event_type:
+                hooks = [h for h in hooks if h.event_type == event_type or h.event_type == "*"]
+
+            if not hooks:
+                return "Nenhum hook configurado."
+
+            lines = ["Hooks customizados configurados:\n"]
+            for i, hook in enumerate(hooks, 1):
+                lines.append(f"{i}. **{hook.name}**")
+                lines.append(f"   - Evento: {hook.event_type}:{hook.event_subtype or '*'}")
+                lines.append(f"   - Módulo: {hook.module_path}")
+                lines.append(f"   - Função: {hook.function}")
+                if hook.config:
+                    lines.append(f"   - Config: {hook.config}")
+                lines.append("")
+
+            return "\n".join(lines)
+
+        elif action == "info":
+            if not hook_name:
+                return "Erro: hook_name é obrigatório para ação 'info'"
+
+            hook = next((h for h in self.hooks_loader.hooks if h.name == hook_name), None)
+            if not hook:
+                return f"Hook '{hook_name}' não encontrado."
+
+            lines = [
+                f"## Hook: {hook.name}",
+                "",
+                f"- **Evento:** {hook.event_type}:{hook.event_subtype or '*'}",
+                f"- **Módulo:** {hook.module_path}",
+                f"- **Função:** {hook.function}",
+                f"- **Config:** {hook.config or {}}",
+                "",
+                "### Assinatura da função",
+                "",
+                "```python",
+                f"def {hook.function}(event: Event, context: dict, config: dict) -> dict:",
+                "    # Seu código aqui",
+                "```"
+            ]
+
+            return "\n".join(lines)
+
+        elif action == "test":
+            # Simula execução de hook de teste
+            from src.core.event_schema import Event, EventType, EventOrigin
+
+            test_event = Event(
+                project="test",
+                origin=EventOrigin.CLAUDE_CODE,
+                event_type=EventType.TOOL_CALL,
+                subtype="bash",
+                payload={"command": "echo test", "duration": 0.1}
+            )
+
+            if self.hooks_runner is None:
+                return "Hooks runner não inicializado."
+
+            results = self.hooks_runner.execute(test_event)
+
+            lines = ["Resultado do teste de hooks:\n"]
+            for name, result in results.items():
+                status = "✅" if result["success"] else "❌"
+                lines.append(f"{status} {name}: {result.get('result', result.get('error', 'N/A'))}")
+
+            return "\n".join(lines)
+
+        return f"Ação desconhecida: {action}"
 
 
 async def main():

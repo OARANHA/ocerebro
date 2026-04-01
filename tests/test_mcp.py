@@ -13,13 +13,14 @@ class TestCerebroMCP:
         mcp = CerebroMCP(tmp_cerebro_dir)
         tools = mcp.get_tools()
 
-        assert len(tools) == 5
+        assert len(tools) == 6  # Adicionado cerebro_hooks
         tool_names = [t.name for t in tools]
         assert "cerebro_memory" in tool_names
         assert "cerebro_search" in tool_names
         assert "cerebro_checkpoint" in tool_names
         assert "cerebro_promote" in tool_names
         assert "cerebro_status" in tool_names
+        assert "cerebro_hooks" in tool_names
 
     def test_memory_tool(self, tmp_cerebro_dir):
         """Ferramenta cerebro_memory"""
@@ -143,3 +144,43 @@ class TestCerebroMCP:
         result = asyncio.run(mcp.handle_tool("cerebro_search", {}))
 
         assert "Erro" in result[0].text or "Nenhum resultado" in result[0].text
+
+    def test_hooks_tool_list(self, tmp_cerebro_dir):
+        """Ferramenta cerebro_hooks - list"""
+        mcp = CerebroMCP(tmp_cerebro_dir)
+
+        import asyncio
+        result = asyncio.run(mcp.handle_tool("cerebro_hooks", {"action": "list"}))
+
+        # Sem hooks.yaml, deve retornar mensagem informativa
+        assert "Nenhum hook" in result[0].text or "não configurados" in result[0].text.lower()
+
+    def test_hooks_tool_with_config(self, tmp_path):
+        """Ferramenta cerebro_hooks com configuração"""
+        import yaml
+        import asyncio
+
+        # Cria hooks.yaml
+        hooks_yaml = tmp_path / "hooks.yaml"
+        hooks_yaml.write_text(yaml.dump({
+            "hooks": [{
+                "name": "test_hook",
+                "event_type": "tool_call",
+                "module_path": "hooks/test.py",
+                "function": "execute",
+                "config": {"key": "value"}
+            }]
+        }))
+
+        # Cria estrutura cerebro completa
+        cerebro_dir = tmp_path / ".cerebro"
+        (cerebro_dir / "raw").mkdir(parents=True)
+        (cerebro_dir / "working").mkdir(parents=True)
+        (cerebro_dir / "official").mkdir(parents=True)
+        (cerebro_dir / "index").mkdir(parents=True)
+
+        mcp = CerebroMCP(cerebro_dir)
+        result = asyncio.run(mcp.handle_tool("cerebro_hooks", {"action": "list"}))
+
+        assert "test_hook" in result[0].text
+        assert "tool_call" in result[0].text
