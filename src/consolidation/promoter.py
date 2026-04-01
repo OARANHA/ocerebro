@@ -281,10 +281,14 @@ class Promoter:
         # Gera corpo
         error_original = str(error.get("context", {}))[:500]
 
+        # BUG-02 FIX: Extrai causa raiz e solução dos dados do erro
+        causa_raiz = error.get("message") or error.get("details") or error.get("root_cause") or ""
+        solucao = error.get("resolution") or error.get("solution") or error.get("fix_applied") or ""
+
         body = ErrorTemplate.body(
             error_original=error_original,
-            causa_raiz="Analisar eventos em raw para determinar causa raiz",
-            solucao_aplicada="Solução aplicada durante a sessão",
+            causa_raiz=causa_raiz,
+            solucao_aplicada=solucao,
             prevencao_futura=None
         )
 

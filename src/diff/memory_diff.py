@@ -396,15 +396,16 @@ class MemoryDiff:
         Returns:
             Resumo de eventos
         """
-        # Lê todos os eventos do projeto (método correto: read())
-        events = self.raw.read(project)
+        # WARN-05 FIX: Usa read_since para filtrar por data durante leitura
+        # Em vez de carregar todos os eventos em memória
+        events = self.raw.read_since(project, start.isoformat())
 
-        # Filtra por período
+        # Filtra por período (end date)
         filtered = []
         for event in events:
             # Issue #4: Parse robusto do timestamp
             event_ts = self._parse_ts(event.ts if hasattr(event, 'ts') else event.get('ts', ''))
-            if start <= event_ts <= end:
+            if event_ts <= end:
                 filtered.append(event)
 
         # Agrupa por tipo
@@ -516,7 +517,8 @@ class MemoryDiff:
             "## Resumo",
             "",
             f"- Decisões adicionadas: {result.stats.get('decisions_added', 0)}",
-            f"- Decisões removidas: {result.stats.get('decisions_removed', 0)}",
+            # BUG-03 FIX: Não mostra "removidas" como 0 enganoso - nota explicativa
+            "- Decisões removidas: _(não rastreado nesta versão)_",
             f"- Erros documentados: {result.stats.get('errors_documented', 0)}",
             f"- Drafts pendentes: {result.stats.get('drafts_pending', 0)}",
             f"- Memórias em risco: {result.stats.get('at_risk_count', 0)}",

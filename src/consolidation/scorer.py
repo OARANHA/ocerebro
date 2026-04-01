@@ -1,7 +1,7 @@
 """Scorer RFM para memórias do Cerebro"""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 import math
 
@@ -74,7 +74,12 @@ class Scorer:
         if not last_accessed:
             return 0.0
 
-        days_ago = (datetime.utcnow() - last_accessed).days
+        # BUG-01 FIX: Usa timezone-aware datetime
+        now = datetime.now(timezone.utc)
+        # Normaliza para timezone-aware se last_accessed for naive (fallback de segurança)
+        if last_accessed.tzinfo is None:
+            last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+        days_ago = (now - last_accessed).days
         return math.exp(-0.05 * days_ago)
 
     def _frequency_score(self, access_count: int) -> float:
@@ -93,14 +98,32 @@ class Scorer:
         """
         Score de importância baseado em severity/impact.
 
+        WARN-03 FIX: Considera tanto errors (severity) quanto decisions (status)
+
         Args:
             memory: Dados da memória
 
         Returns:
             Score de importância
         """
-        severity_map = {"critical": 1.0, "high": 0.8, "medium": 0.5, "low": 0.2}
-        return severity_map.get(memory.get("severity", "low"), 0.2)
+        # WARN-03 FIX: Erros usam severity, decisions usam status
+        mem_type = memory.get("type", "")
+
+        if mem_type == "error":
+            severity_map = {"critical": 1.0, "high": 0.8, "medium": 0.5, "low": 0.2}
+            return severity_map.get(memory.get("severity", "low"), 0.2)
+
+        if mem_type == "decision":
+            # Decisões approved têm alta importância
+            status_map = {
+                "approved": 0.8,
+                "superseded": 0.4,
+                "deprecated": 0.1,
+                "draft": 0.3
+            }
+            return status_map.get(memory.get("status", "draft"), 0.3)
+
+        return 0.2
 
     def _links_score(self, related_to: list) -> float:
         """
@@ -140,7 +163,14 @@ class Scorer:
         Returns:
             Dicionário com todos os scores
         """
-        r = self._recency_score(memory.get("last_accessed"))
+        # BUG-01 FIX: Usa timezone-aware datetime
+        now = datetime.now(timezone.utc)
+        last_accessed = memory.get("last_accessed")
+        # Normaliza se for naive
+        if last_accessed and isinstance(last_accessed, datetime) and last_accessed.tzinfo is None:
+            last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+
+        r = self._recency_score(last_accessed)
         f = self._frequency_score(memory.get("access_count", 0))
         i = self._importance_score(memory)
         l = self._links_score(memory.get("related_to", []))

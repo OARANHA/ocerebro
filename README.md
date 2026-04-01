@@ -80,12 +80,13 @@ Com o MCP Server configurado, você tem acesso a:
 
 | Ferramenta | Descrição |
 |------------|-----------|
-| `ocerebro_memory` | Gera MEMORY.md do projeto |
-| `ocerebro_search` | Busca memórias por texto/embedding |
-| `ocerebro_checkpoint` | Cria checkpoint da sessão atual |
-| `ocerebro_promote` | Promove draft para decisão official |
-| `ocerebro_status` | Status do sistema |
-| `ocerebro_hooks` | Gerencia hooks customizados |
+| `cerebro_memory` | Gera MEMORY.md do projeto |
+| `cerebro_search` | Busca memórias por texto/embedding |
+| `cerebro_checkpoint` | Cria checkpoint da sessão atual |
+| `cerebro_promote` | Promove draft para decisão official |
+| `cerebro_status` | Status do sistema |
+| `cerebro_hooks` | Gerencia hooks customizados |
+| `cerebro_diff` | Análise diferencial de memória entre períodos |
 
 ---
 

@@ -72,10 +72,17 @@ class CerebroMCP:
             self.raw_storage
         )
 
-        # Inicializa hooks
+        # Inicializa hooks com tratamento de erro
+        # WARN-04 FIX: hooks.yaml com erro não derruba o servidor
         hooks_config = self.cerebro_path.parent / "hooks.yaml"
-        self.hooks_loader = HooksLoader(hooks_config) if hooks_config.exists() else None
-        self.hooks_runner = HookRunner(self.hooks_loader) if self.hooks_loader else None
+        try:
+            self.hooks_loader = HooksLoader(hooks_config) if hooks_config.exists() else None
+            self.hooks_runner = HookRunner(self.hooks_loader) if self.hooks_loader else None
+        except Exception as e:
+            import sys
+            print(f"[CEREBRO] Aviso: hooks.yaml com erro ({e}). Hooks desativados.", file=sys.stderr)
+            self.hooks_loader = None
+            self.hooks_runner = None
 
     def get_tools(self) -> List[Tool]:
         """

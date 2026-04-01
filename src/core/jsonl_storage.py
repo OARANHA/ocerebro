@@ -80,6 +80,54 @@ class JSONLStorage:
 
         return events
 
+    def read_since(self, project: str, since: str) -> List[Event]:
+        """
+        Lê eventos desde uma data específica.
+
+        WARN-05 FIX: Filtra por data durante a leitura para evitar carregar tudo em memória
+
+        Args:
+            project: Nome do projeto
+            since: Data mínima (ISO format, ex: "2026-03-01T00:00:00Z")
+
+        Returns:
+            Lista de eventos após a data especificada
+        """
+        from datetime import datetime, timezone
+
+        project_dir = self._get_project_dir(project)
+        if not project_dir.exists():
+            return []
+
+        # Parse da data de início
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError:
+            # Fallback: lê tudo
+            return self.read(project)
+
+        events = []
+        for jsonl_file in sorted(project_dir.glob("events-*.jsonl")):
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        event = Event.model_validate_json(line)
+                        # Parse do timestamp do evento
+                        event_ts = event.ts.replace("Z", "+00:00")
+                        event_dt = datetime.fromisoformat(event_ts)
+
+                        if event_dt >= since_dt:
+                            events.append(event)
+                    except Exception:
+                        # Ignora eventos com timestamp inválido
+                        continue
+
+        return events
+
     def read_range(self, project: str, start_id: str, end_id: str) -> List[Event]:
         """
         Lê eventos em um intervalo de IDs.
