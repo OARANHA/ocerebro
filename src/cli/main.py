@@ -38,35 +38,24 @@ class CerebroCLI:
     """
 
     def __init__(self, cerebro_path: Path):
-        """
-        Inicializa a CLI.
-
-        Args:
-            cerebro_path: Diretório base do Cerebro
-        """
         self.cerebro_path = cerebro_path
         self.cerebro_path.mkdir(parents=True, exist_ok=True)
 
-        # Inicializa storages
         self.raw_storage = JSONLStorage(cerebro_path / "raw")
         self.working_storage = YAMLStorage(cerebro_path / "working")
         self.official_storage = MarkdownStorage(cerebro_path / "official")
         self.session_manager = SessionManager(cerebro_path)
 
-        # Inicializa índice
         self.metadata_db = MetadataDB(cerebro_path / "index" / "metadata.db")
         self.embeddings_db = EmbeddingsDB(cerebro_path / "index" / "embeddings.db")
         self.query_engine = QueryEngine(self.metadata_db, self.embeddings_db)
 
-        # Inicializa consolidação
         self.checkpoint_manager = CheckpointManager(cerebro_path / "config")
         self.extractor = Extractor(self.raw_storage, self.working_storage)
         self.promoter = Promoter(self.working_storage, self.official_storage)
 
-        # Inicializa memory view
         self.memory_view = MemoryView(cerebro_path, self.official_storage, self.working_storage)
 
-        # Inicializa memory diff
         self.memory_diff = MemoryDiff(
             self.official_storage,
             self.working_storage,
@@ -74,21 +63,9 @@ class CerebroCLI:
         )
 
     def checkpoint(self, project: str, session_id: Optional[str] = None, reason: str = "manual") -> str:
-        """
-        Trigger manual de checkpoint.
-
-        Args:
-            project: Nome do projeto
-            session_id: ID da sessão (usa atual se None)
-            reason: Motivo do checkpoint
-
-        Returns:
-            Mensagem de resultado
-        """
         if session_id is None:
             session_id = self.session_manager.get_session_id()
 
-        # Extrai sessão
         try:
             result = self.extractor.extract_session(project, session_id)
         except Exception as e:
@@ -97,14 +74,10 @@ class CerebroCLI:
         if not result.events:
             return f"Nenhum evento encontrado para sessão {session_id}"
 
-        # Cria draft
         draft = self.extractor.create_draft(result, "session")
         draft["checkpoint_reason"] = reason
-
-        # Escreve draft
         draft_name = self.extractor.write_draft(project, draft, "session")
 
-        # Registra evento de checkpoint
         from src.core.event_schema import Event, EventType, EventOrigin
         checkpoint_event = Event(
             project=project,
@@ -119,26 +92,13 @@ class CerebroCLI:
             }
         )
         self.raw_storage.append(checkpoint_event)
-
         return f"Checkpoint criado: {draft_name} ({len(result.events)} eventos)"
 
     def memory(self, project: str, output: Optional[Path] = None) -> str:
-        """
-        Gera visualização da memória ativa.
-
-        Args:
-            project: Nome do projeto
-            output: Arquivo de saída (opcional)
-
-        Returns:
-            Conteúdo do MEMORY.md
-        """
         content = self.memory_view.generate(project)
-
         if output:
             output.write_text(content, encoding="utf-8")
             return f"MEMORY.md gerado em: {output}"
-
         return content
 
     def search(
@@ -149,19 +109,6 @@ class CerebroCLI:
         limit: int = 10,
         use_semantic: bool = True
     ) -> str:
-        """
-        Busca memórias.
-
-        Args:
-            query: Texto de busca
-            project: Filtrar por projeto
-            mem_type: Filtrar por tipo
-            limit: Limite de resultados
-            use_semantic: Usar busca semântica
-
-        Returns:
-            Resultados formatados
-        """
         results = self.query_engine.search(
             query=query,
             project=project,
@@ -180,7 +127,6 @@ class CerebroCLI:
             if r.metadata:
                 if r.metadata.get("tags"):
                     lines.append(f"   Tags: {r.metadata['tags']}")
-
         return "\n".join(lines)
 
     def promote(
@@ -190,18 +136,6 @@ class CerebroCLI:
         draft_type: str = "session",
         promote_to: str = "decision"
     ) -> str:
-        """
-        Promove draft para official.
-
-        Args:
-            project: Nome do projeto
-            draft_id: ID do draft
-            draft_type: Tipo do draft
-            promote_to: Tipo de promoção
-
-        Returns:
-            Mensagem de resultado
-        """
         if draft_type == "session":
             result = self.promoter.promote_session(project, draft_id, promote_to)
         elif draft_type == "feature":
@@ -213,10 +147,8 @@ class CerebroCLI:
             return "Draft não encontrado ou não pôde ser promovido."
 
         if result.success:
-            # Marca como promovido
             self.promoter.mark_promoted(project, draft_id, draft_type, result)
 
-            # Registra evento
             from src.core.event_schema import Event, EventType, EventOrigin
             promotion_event = Event(
                 project=project,
@@ -231,38 +163,21 @@ class CerebroCLI:
                 }
             )
             self.raw_storage.append(promotion_event)
-
             return f"Promovido para: {result.target_path}"
         else:
             return f"Promoção falhou: {result.metadata.get('reason', 'desconhecido')}"
 
     def gc(self, project: Optional[str] = None, dry_run: bool = True) -> str:
-        """
-        Garbage collection manual.
-
-        Args:
-            project: Nome do projeto (None para todos)
-            dry_run: Apenas simular
-
-        Returns:
-            Relatório de GC
-        """
         from src.forgetting.guard_rails import GuardRails
         from src.forgetting.gc import GarbageCollector
 
         guard_rails = GuardRails(self.cerebro_path / "config" / "cerebro.yaml")
         gc = GarbageCollector(self.cerebro_path / "config")
-
-        # Lista memórias do índice
         memories = self.metadata_db.search(project)
-
-        # Encontra candidatos para archive
         archive_candidates = gc.find_candidates_for_archive(
             memories,
             guard_rails.get_archive_threshold("raw")
         )
-
-        # Filtra por guard rails
         delete_candidates = [
             m for m in archive_candidates
             if guard_rails.can_delete(m)
@@ -284,34 +199,17 @@ class CerebroCLI:
         return "\n".join(lines)
 
     def status(self) -> str:
-        """
-        Status do sistema.
-
-        Returns:
-            Relatório de status
-        """
         lines = ["Status do Cerebro:\n"]
-
-        # Session atual
         session_id = self.session_manager.get_session_id()
         lines.append(f"Session ID: {session_id}")
-
-        # Stats do raw
         lines.append(f"\nRaw storage: {self.cerebro_path / 'raw'}")
-
-        # Stats do working
         lines.append(f"Working storage: {self.cerebro_path / 'working'}")
-
-        # Stats do official
         lines.append(f"Official storage: {self.cerebro_path / 'official'}")
-
-        # Stats do índice
         try:
             stats = self.metadata_db.search()
             lines.append(f"\nÍndice: {len(stats)} memórias")
         except Exception:
             lines.append("\nÍndice: não disponível")
-
         return "\n".join(lines)
 
     def diff(
@@ -324,21 +222,6 @@ class CerebroCLI:
         output: Optional[Path] = None,
         format: str = "markdown"
     ) -> str:
-        """
-        Analisa diferenças de memória entre dois pontos no tempo.
-
-        Args:
-            project: Nome do projeto
-            period_days: Dias do período (ex: 7, 30)
-            start_date: Data de início explícita (ISO string)
-            end_date: Data de fim explícita (ISO string)
-            gc_threshold: Threshold para garbage collection risk
-            output: Arquivo de saída (opcional)
-            format: Formato de saída (markdown, json)
-
-        Returns:
-            Relatório de Memory Diff
-        """
         result = self.memory_diff.analyze(
             project=project,
             period_days=period_days,
@@ -346,26 +229,13 @@ class CerebroCLI:
             end_date=end_date,
             gc_threshold=gc_threshold
         )
-
         report = self.memory_diff.generate_report(result, format=format)
-
         if output:
             output.write_text(report, encoding="utf-8")
             return f"Memory Diff report gerado em: {output}"
-
         return report
 
     def dream(self, since_days: int = 7, dry_run: bool = True) -> str:
-        """
-        Extração automática de memórias.
-
-        Args:
-            since_days: Dias para analisar
-            dry_run: Se True, apenas simula
-
-        Returns:
-            Relatório da extração
-        """
         from src.core.paths import get_auto_mem_path
         from src.consolidation.dream import run_dream, generate_dream_report
 
@@ -374,31 +244,12 @@ class CerebroCLI:
         return generate_dream_report(result)
 
     def remember(self, dry_run: bool = True) -> str:
-        """
-        Revisão e promoção de memórias.
-
-        Args:
-            dry_run: Se True, apenas gera relatório
-
-        Returns:
-            Relatório do remember
-        """
         from src.consolidation.remember import run_remember, generate_remember_report
 
         report = run_remember(dry_run=dry_run)
         return generate_remember_report(report)
 
     def gc_cmd(self, threshold_days: int = 7, dry_run: bool = True) -> str:
-        """
-        Garbage collection de memórias.
-
-        Args:
-            threshold_days: Dias para considerar memória stale
-            dry_run: Se True, apenas lista candidatas
-
-        Returns:
-            Relatório do GC
-        """
         from src.core.paths import get_auto_mem_path
         from src.forgetting.gc import GarbageCollector
 
@@ -411,6 +262,33 @@ class CerebroCLI:
             dry_run=dry_run
         )
         return gc.generate_gc_report(results)
+
+
+def _run_init(project_path: Optional[Path] = None):
+    """Lógica de init compartilhada entre 'init' e 'setup init'"""
+    from cerebro.cerebro_setup import setup_cerebro_dir, setup_hooks
+
+    print("Como quer usar o OCerebro?")
+    print("  1. Neste projeto (cria .ocerebro/ aqui)")
+    print("  2. Global (usa ~/.ocerebro/ para todos os projetos)")
+    choice = input("\nEscolha [1/2] (padrão: 1): ").strip() or "1"
+
+    if choice == "2":
+        base_path = Path.home() / ".ocerebro"
+        print(f"\n✓ Modo global: {base_path}")
+    else:
+        base_path = (project_path or Path.cwd()) / ".ocerebro"
+        print(f"\n✓ Modo projeto: {base_path}")
+
+    config_file = Path.home() / ".ocerebro_config"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(f"base_path={base_path}\n", encoding="utf-8")
+    print(f"✓ Configuração salva em {config_file}")
+
+    setup_cerebro_dir(base_path)
+    setup_hooks(base_path)
+    print("\nSetup completo! Agora execute:")
+    print("  ocerebro setup claude")
 
 
 def main():
@@ -428,6 +306,10 @@ def main():
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Comandos")
+
+    # Comando: init (alias direto para setup init)
+    init_parser = subparsers.add_parser("init", help="Inicializar OCerebro no projeto atual")
+    init_parser.add_argument("--project", type=Path, help="Diretório do projeto (padrão: atual)")
 
     # Comando: checkpoint
     checkpoint_parser = subparsers.add_parser("checkpoint", help="Trigger manual de checkpoint")
@@ -465,28 +347,28 @@ def main():
     subparsers.add_parser("status", help="Status do sistema")
 
     # Comando: diff
-    diff_parser = subparsers.add_parser("diff", help="Análise diferencial de memória entre dois pontos no tempo")
+    diff_parser = subparsers.add_parser("diff", help="Análise diferencial de memória")
     diff_parser.add_argument("project", help="Nome do projeto")
     diff_parser.add_argument("--period", type=int, default=7, help="Dias do período (padrão: 7)")
-    diff_parser.add_argument("--start", dest="start_date", help="Data de início (ISO format, ex: 2026-03-01)")
-    diff_parser.add_argument("--end", dest="end_date", help="Data de fim (ISO format, ex: 2026-03-31)")
-    diff_parser.add_argument("--gc-threshold", type=float, default=0.3, help="Threshold para GC risk (padrão: 0.3)")
+    diff_parser.add_argument("--start", dest="start_date", help="Data de início (ISO format)")
+    diff_parser.add_argument("--end", dest="end_date", help="Data de fim (ISO format)")
+    diff_parser.add_argument("--gc-threshold", type=float, default=0.3, help="Threshold para GC risk")
     diff_parser.add_argument("--output", type=Path, help="Arquivo de saída")
-    diff_parser.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Formato de saída")
+    diff_parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
 
     # Comando: dream
     dream_parser = subparsers.add_parser("dream", help="Extração automática de memórias")
-    dream_parser.add_argument("--since", type=int, default=7, dest="since_days", help="Dias para analisar (padrão: 7)")
-    dream_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar extração (padrão: dry-run)")
+    dream_parser.add_argument("--since", type=int, default=7, dest="since_days")
+    dream_parser.add_argument("--apply", action="store_true", dest="apply")
 
     # Comando: remember
     remember_parser = subparsers.add_parser("remember", help="Revisão e promoção de memórias")
-    remember_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar promoções (padrão: dry-run)")
+    remember_parser.add_argument("--apply", action="store_true", dest="apply")
 
     # Comando: gc
     gc_parser = subparsers.add_parser("gc", help="Garbage collection de memórias")
-    gc_parser.add_argument("--threshold", type=int, default=7, dest="threshold_days", help="Dias para considerar memória stale (padrão: 7)")
-    gc_parser.add_argument("--apply", action="store_true", dest="apply", help="Aplicar GC (padrão: dry-run)")
+    gc_parser.add_argument("--threshold", type=int, default=7, dest="threshold_days")
+    gc_parser.add_argument("--apply", action="store_true", dest="apply")
 
     args = parser.parse_args()
 
@@ -494,7 +376,12 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Comando setup nao precisa de CLI
+    # Comando: init (alias direto)
+    if args.command == "init":
+        _run_init(getattr(args, 'project', None))
+        sys.exit(0)
+
+    # Comando setup
     if args.command == "setup":
         from cerebro.cerebro_setup import setup_claude_desktop, setup_hooks, setup_cerebro_dir
 
@@ -505,32 +392,9 @@ def main():
             success = setup_hooks(args.project)
             sys.exit(0 if success else 1)
         elif args.subcommand == "init":
-            # Pergunta: global ou projeto?
-            print("Como quer usar o OCerebro?")
-            print("  1. Neste projeto (cria .ocerebro/ aqui)")
-            print("  2. Global (usa ~/.ocerebro/ para todos os projetos)")
-            choice = input("\nEscolha [1/2] (padrão: 1): ").strip() or "1"
-
-            if choice == "2":
-                base_path = Path.home() / ".ocerebro"
-                print(f"\n✓ Modo global: {base_path}")
-            else:
-                base_path = Path.cwd() / ".ocerebro"
-                print(f"\n✓ Modo projeto: {base_path}")
-
-            # Salva a escolha num arquivo de config global
-            config_file = Path.home() / ".ocerebro_config"
-            config_file.parent.mkdir(parents=True, exist_ok=True)
-            config_file.write_text(f"base_path={base_path}\n", encoding="utf-8")
-            print(f"✓ Configuração salva em {config_file}")
-
-            setup_cerebro_dir(base_path)
-            setup_hooks(base_path)
-            print("\nSetup completo! Agora execute:")
-            print("  cerebro setup claude")
+            _run_init(getattr(args, 'project', None))
             sys.exit(0)
         else:
-            # Setup completo
             setup_cerebro_dir(args.project)
             setup_hooks(args.project)
             setup_claude_desktop()
@@ -539,7 +403,6 @@ def main():
     # Inicializa CLI
     cli = CerebroCLI(args.cerebro_path)
 
-    # Executa comando
     if args.command == "checkpoint":
         result = cli.checkpoint(args.project, args.session, args.reason)
     elif args.command == "memory":
