@@ -57,10 +57,10 @@ function getPythonCmd() {
 }
 
 // Encontra o caminho do pacote ocerebro
-function getOcerebroPath() {
+function getOcerebroPath(pythonCmd) {
     try {
         // Tenta encontrar via pip show
-        const output = execSync(`${getPythonCmd()} -m pip show ocerebro`, { encoding: 'utf-8' });
+        const output = execSync(`${pythonCmd} -m pip show ocerebro`, { encoding: 'utf-8' });
         const match = output.match(/Location: (.+)/);
         if (match) {
             return path.join(match[1].trim(), 'ocerebro');
@@ -75,9 +75,9 @@ function getOcerebroPath() {
 // Argumentos da linha de comando
 const args = process.argv.slice(2);
 
-// Comando principal
+// Comando principal (chamado UMA única vez)
 const pythonCmd = getPythonCmd();
-const ocerebroPath = getOcerebroPath();
+const ocerebroPath = getOcerebroPath(pythonCmd);
 const cliScript = path.join(ocerebroPath, 'src', 'cli', 'main.py');
 
 // Executa a CLI Python
