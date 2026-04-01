@@ -1,0 +1,53 @@
+# Cerebro Hooks Configuration
+# Configure hooks customizados para responder a eventos do Cerebro
+
+hooks:
+  # Hook: Check de cobertura de testes
+  - name: test_coverage_check
+    event_type: test_result
+    module_path: hooks/coverage_hook.py
+    function: on_test_result
+    config:
+      min_coverage: 80
+      fail_below_threshold: false
+      notify_on_failure: true
+
+  # Hook: Log de operações custosas
+  - name: expensive_operation_log
+    event_type: tool_call
+    event_subtype: bash
+    module_path: hooks/expensive_hook.py
+    function: on_expensive_operation
+    config:
+      log_threshold_seconds: 5
+      alert_threshold_seconds: 30
+
+  # Hook: Notificação de erros críticos
+  - name: error_notification
+    event_type: error
+    module_path: hooks/error_hook.py
+    function: on_error
+    config:
+      notify_severity: ["critical", "high"]
+      channel: slack
+      include_stacktrace: true
+
+  # Hook: Tracker de custo LLM
+  - name: llm_cost_tracker
+    event_type: tool_call
+    event_subtype: llm
+    module_path: hooks/cost_hook.py
+    function: on_llm_call
+    config:
+      log_cost: true
+      monthly_budget: 100.0
+      alert_at_percentage: 80
+
+  # Hook: Global capture (todos os eventos)
+  - name: global_event_logger
+    event_type: "*"
+    module_path: hooks/global_logger.py
+    function: on_any_event
+    config:
+      log_level: info
+      exclude_subtypes: ["heartbeat"]
