@@ -11,11 +11,8 @@ Usage:
 import sys
 from pathlib import Path
 
-# Adiciona src ao path para imports
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
-
-from cerebro_setup import main as setup_main
+# Import relativo do modulo setup
+from .cerebro_setup import main as setup_main
 
 
 def main():
@@ -25,6 +22,10 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
+
+    # Adiciona src ao path para imports da CLI
+    src_path = Path(__file__).parent.parent / "src"
+    sys.path.insert(0, str(src_path))
 
     if command == "setup":
         setup_main()
