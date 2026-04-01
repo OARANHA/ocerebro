@@ -13,7 +13,7 @@ class TestCerebroMCP:
         mcp = CerebroMCP(tmp_cerebro_dir)
         tools = mcp.get_tools()
 
-        assert len(tools) == 6  # Adicionado cerebro_hooks
+        assert len(tools) == 7  # Adicionado cerebro_diff
         tool_names = [t.name for t in tools]
         assert "cerebro_memory" in tool_names
         assert "cerebro_search" in tool_names
@@ -21,6 +21,7 @@ class TestCerebroMCP:
         assert "cerebro_promote" in tool_names
         assert "cerebro_status" in tool_names
         assert "cerebro_hooks" in tool_names
+        assert "cerebro_diff" in tool_names
 
     def test_memory_tool(self, tmp_cerebro_dir):
         """Ferramenta cerebro_memory"""
@@ -184,3 +185,16 @@ class TestCerebroMCP:
 
         assert "test_hook" in result[0].text
         assert "tool_call" in result[0].text
+
+    def test_diff_tool(self, tmp_cerebro_dir):
+        """Ferramenta cerebro_diff"""
+        mcp = CerebroMCP(tmp_cerebro_dir)
+
+        import asyncio
+        result = asyncio.run(mcp.handle_tool(
+            "cerebro_diff",
+            {"project": "test", "period_days": 7}
+        ))
+
+        assert "# Memory Diff Report" in result[0].text
+        assert "Período" in result[0].text

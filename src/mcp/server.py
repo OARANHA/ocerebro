@@ -20,6 +20,7 @@ from src.index.metadata_db import MetadataDB
 from src.index.embeddings_db import EmbeddingsDB
 from src.index.queries import QueryEngine
 from src.hooks.custom_loader import HooksLoader, HookRunner
+from src.diff.memory_diff import MemoryDiff
 
 
 class CerebroMCP:
@@ -62,6 +63,13 @@ class CerebroMCP:
             self.cerebro_path,
             self.official_storage,
             self.working_storage
+        )
+
+        # Inicializa memory diff
+        self.memory_diff = MemoryDiff(
+            self.official_storage,
+            self.working_storage,
+            self.raw_storage
         )
 
         # Inicializa hooks
@@ -199,6 +207,44 @@ class CerebroMCP:
                         }
                     }
                 }
+            ),
+            Tool(
+                name="cerebro_diff",
+                description="Análise diferencial de memória entre dois pontos no tempo - mostra decisões adicionadas, erros documentados, drafts pendentes e memórias em risco de GC",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "project": {
+                            "type": "string",
+                            "description": "Nome do projeto"
+                        },
+                        "period_days": {
+                            "type": "integer",
+                            "description": "Dias do período (padrão: 7)",
+                            "default": 7
+                        },
+                        "start_date": {
+                            "type": "string",
+                            "description": "Data de início (ISO format, ex: 2026-03-01)"
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "Data de fim (ISO format, ex: 2026-03-31)"
+                        },
+                        "gc_threshold": {
+                            "type": "number",
+                            "description": "Threshold para GC risk (padrão: 0.3)",
+                            "default": 0.3
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Formato de saída",
+                            "enum": ["markdown", "json"],
+                            "default": "markdown"
+                        }
+                    },
+                    "required": ["project"]
+                }
             )
         ]
 
@@ -226,6 +272,8 @@ class CerebroMCP:
                 result = self._status()
             elif name == "cerebro_hooks":
                 result = self._hooks(arguments)
+            elif name == "cerebro_diff":
+                result = self._diff(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -434,6 +482,28 @@ class CerebroMCP:
             return "\n".join(lines)
 
         return f"Ação desconhecida: {action}"
+
+    def _diff(self, args: Dict[str, Any]) -> str:
+        """Análise diferencial de memória"""
+        project = args.get("project")
+        if not project:
+            return "Erro: project é obrigatório"
+
+        period_days = args.get("period_days", 7)
+        start_date = args.get("start_date")
+        end_date = args.get("end_date")
+        gc_threshold = args.get("gc_threshold", 0.3)
+        format = args.get("format", "markdown")
+
+        result = self.memory_diff.analyze(
+            project=project,
+            period_days=period_days if not start_date else None,
+            start_date=start_date,
+            end_date=end_date,
+            gc_threshold=gc_threshold
+        )
+
+        return self.memory_diff.generate_report(result, format=format)
 
 
 async def main():

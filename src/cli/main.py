@@ -18,6 +18,7 @@ from src.consolidation.promoter import Promoter
 from src.index.metadata_db import MetadataDB
 from src.index.embeddings_db import EmbeddingsDB
 from src.index.queries import QueryEngine
+from src.diff.memory_diff import MemoryDiff, MemoryDiffResult
 
 
 class CerebroCLI:
@@ -61,6 +62,13 @@ class CerebroCLI:
 
         # Inicializa memory view
         self.memory_view = MemoryView(cerebro_path, self.official_storage, self.working_storage)
+
+        # Inicializa memory diff
+        self.memory_diff = MemoryDiff(
+            self.official_storage,
+            self.working_storage,
+            self.raw_storage
+        )
 
     def checkpoint(self, project: str, session_id: Optional[str] = None, reason: str = "manual") -> str:
         """
@@ -303,6 +311,47 @@ class CerebroCLI:
 
         return "\n".join(lines)
 
+    def diff(
+        self,
+        project: str,
+        period_days: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        gc_threshold: float = 0.3,
+        output: Optional[Path] = None,
+        format: str = "markdown"
+    ) -> str:
+        """
+        Analisa diferenças de memória entre dois pontos no tempo.
+
+        Args:
+            project: Nome do projeto
+            period_days: Dias do período (ex: 7, 30)
+            start_date: Data de início explícita (ISO string)
+            end_date: Data de fim explícita (ISO string)
+            gc_threshold: Threshold para garbage collection risk
+            output: Arquivo de saída (opcional)
+            format: Formato de saída (markdown, json)
+
+        Returns:
+            Relatório de Memory Diff
+        """
+        result = self.memory_diff.analyze(
+            project=project,
+            period_days=period_days,
+            start_date=start_date,
+            end_date=end_date,
+            gc_threshold=gc_threshold
+        )
+
+        report = self.memory_diff.generate_report(result, format=format)
+
+        if output:
+            output.write_text(report, encoding="utf-8")
+            return f"Memory Diff report gerado em: {output}"
+
+        return report
+
 
 def main():
     """Entry point da CLI"""
@@ -361,6 +410,16 @@ def main():
     # Comando: status
     subparsers.add_parser("status", help="Status do sistema")
 
+    # Comando: diff
+    diff_parser = subparsers.add_parser("diff", help="Análise diferencial de memória entre dois pontos no tempo")
+    diff_parser.add_argument("project", help="Nome do projeto")
+    diff_parser.add_argument("--period", type=int, default=7, help="Dias do período (padrão: 7)")
+    diff_parser.add_argument("--start", dest="start_date", help="Data de início (ISO format, ex: 2026-03-01)")
+    diff_parser.add_argument("--end", dest="end_date", help="Data de fim (ISO format, ex: 2026-03-31)")
+    diff_parser.add_argument("--gc-threshold", type=float, default=0.3, help="Threshold para GC risk (padrão: 0.3)")
+    diff_parser.add_argument("--output", type=Path, help="Arquivo de saída")
+    diff_parser.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Formato de saída")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -412,6 +471,16 @@ def main():
         result = cli.gc(args.project, args.dry_run)
     elif args.command == "status":
         result = cli.status()
+    elif args.command == "diff":
+        result = cli.diff(
+            args.project,
+            period_days=args.period if not args.start_date else None,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            gc_threshold=args.gc_threshold,
+            output=args.output,
+            format=args.format
+        )
     else:
         parser.print_help()
         sys.exit(1)
