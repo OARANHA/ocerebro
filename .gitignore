@@ -5,6 +5,10 @@ raw/**/*.jsonl
 
 # Worktrees
 .worktrees/
+worktrees/
+
+# Cerebro data (cada projeto tem o seu)
+.cerebro/
 
 # Python
 __pycache__/
@@ -15,6 +19,9 @@ __pycache__/
 .venv/
 venv/
 ENV/
+*.egg-info/
+dist/
+build/
 
 # IDE
 .vscode/
@@ -25,3 +32,12 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+.pytype/
