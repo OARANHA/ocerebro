@@ -1,5 +1,6 @@
 """Consolidação do Cerebro: extração, scoring, promoção"""
 from .checkpoints import CheckpointManager, CheckpointTrigger
+from .scorer import Scorer, ScoringConfig
 
 
 class Extractor:
@@ -7,15 +8,6 @@ class Extractor:
     Extrator de eventos brutos para working.
 
     Stub - será implementado futuramente.
-    """
-    pass
-
-
-class Scorer:
-    """
-    Scorer RFM para eventos.
-
-    Stub - será implementado no Task 11.
     """
     pass
 
@@ -29,4 +21,4 @@ class Promoter:
     pass
 
 
-__all__ = ["CheckpointManager", "CheckpointTrigger", "Extractor", "Scorer", "Promoter"]
+__all__ = ["CheckpointManager", "CheckpointTrigger", "Extractor", "Scorer", "ScoringConfig", "Promoter"]
