@@ -1,9 +1,15 @@
 # LLM usado pelo dream (extração automática de memórias)
-# Requer ANTHROPIC_API_KEY no ambiente
+# Requer ANTHROPIC_API_KEY ou ANTHROPIC_AUTH_TOKEN no ambiente
+# Se usar proxy customizado, defina ANTHROPIC_BASE_URL
 llm:
-  model: "claude-opus-4-5"
+  # Modelo: usa ANTHROPIC_MODEL se definido, senão usa este valor
+  model: "${ANTHROPIC_MODEL:-claude-opus-4-5}"
   # Alternativas:
   # model: "claude-3-5-haiku-latest"   # mais rápido e barato
   # model: "claude-3-7-sonnet-latest"  # balanço custo/qualidade
+  # model: "qwen3.5-plus"              # via proxy DashScope/Alibaba
   max_tokens: 8096
   temperature: 0
+  # O sistema lê automaticamente:
+  # - ANTHROPIC_AUTH_TOKEN (prioritário) ou ANTHROPIC_API_KEY
+  # - ANTHROPIC_BASE_URL (para proxy customizado)

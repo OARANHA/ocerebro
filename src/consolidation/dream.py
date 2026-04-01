@@ -346,8 +346,20 @@ def run_dream(
     # Chamada real à API
     try:
         import anthropic
-        model = os.environ.get("CEREBRO_MODEL", "claude-opus-4-5")
-        client = anthropic.Anthropic()
+        _api_key = (
+            os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or os.environ.get("ANTHROPIC_API_KEY")
+        )
+        _base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        model = (
+            os.environ.get("CEREBRO_MODEL")
+            or os.environ.get("ANTHROPIC_MODEL")
+            or "claude-opus-4-5"
+        )
+        client = anthropic.Anthropic(
+            api_key=_api_key,
+            base_url=_base_url,
+        )
         response = client.messages.create(
             model=model,
             max_tokens=8096,
