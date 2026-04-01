@@ -1,0 +1,33 @@
+{
+  "name": "ocerebro",
+  "version": "0.1.0",
+  "description": "OCerebro - Sistema de Memoria para Agentes (Claude Code/MCP)",
+  "main": "bin/ocerebro.js",
+  "bin": {
+    "ocerebro": "./bin/ocerebro.js"
+  },
+  "scripts": {
+    "test": "echo \"Run Python tests with: pytest\" && exit 0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "memory",
+    "ai",
+    "agent",
+    "mcp"
+  ],
+  "author": "OARANHA",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OARANHA/ocerebro.git"
+  },
+  "homepage": "https://github.com/OARANHA/ocerebro#readme",
+  "bugs": {
+    "url": "https://github.com/OARANHA/ocerebro/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
