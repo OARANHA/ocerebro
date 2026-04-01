@@ -157,7 +157,7 @@ def setup_claude_desktop() -> bool:
     )
 
     print()
-    print("✅ Cerebro configurado no Claude Desktop!")
+    print("[OK] Cerebro configurado no Claude Desktop!")
     print()
     print("Próximos passos:")
     print("  1. Reinicie o Claude Desktop")
@@ -216,8 +216,8 @@ hooks:
     hooks_dir.mkdir(exist_ok=True)
     (hooks_dir / "__init__.py").write_text('"""Hooks customizados do projeto"""', encoding="utf-8")
 
-    print(f"✅ hooks.yaml criado em {project_path}")
-    print(f"✅ Diretório hooks/ criado")
+    print(f"[OK] hooks.yaml criado em {project_path}")
+    print(f"[OK] Diretório hooks/ criado")
 
     return True
 
@@ -256,7 +256,7 @@ index/
 config/local.yaml
 """, encoding="utf-8")
 
-    print(f"✅ Diretório .cerebro criado em {project_path}")
+    print(f"[OK] Diretório .cerebro criado em {project_path}")
     print(f"   - raw/ (eventos brutos)")
     print(f"   - working/ (rascunhos)")
     print(f"   - official/ (memória permanente)")
