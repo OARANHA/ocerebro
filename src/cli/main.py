@@ -363,6 +363,7 @@ def main():
     dream_parser = subparsers.add_parser("dream", help="Extração automática de memórias")
     dream_parser.add_argument("--since", type=int, default=7, dest="since_days")
     dream_parser.add_argument("--apply", action="store_true", dest="apply")
+    dream_parser.add_argument("--silent", action="store_true", dest="silent", help="Não imprimir output (para hooks)")
 
     # Comando: remember
     remember_parser = subparsers.add_parser("remember", help="Revisão e promoção de memórias")
@@ -434,6 +435,8 @@ def main():
         )
     elif args.command == "dream":
         result = cli.dream(since_days=args.since_days, dry_run=not args.apply)
+        if getattr(args, 'silent', False):
+            sys.exit(0)
     elif args.command == "remember":
         result = cli.remember(dry_run=not args.apply)
     elif args.command == "gc":
@@ -442,6 +445,8 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    if getattr(args, 'silent', False):
+        sys.exit(0)
     print(result)
 
 

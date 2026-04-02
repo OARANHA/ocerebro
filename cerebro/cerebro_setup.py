@@ -187,41 +187,77 @@ def merge_configs(existing: dict, new: dict) -> dict:
     return result
 
 
-def setup_slash_commands(project_path: Path) -> bool:
-    """Cria slash commands /cerebro no .claude/commands/ do projeto."""
+def setup_slash_commands(project_path: Path | None = None, global_commands: bool = True) -> bool:
+    """Cria slash commands /cerebro no .claude/commands/ do projeto e global."""
 
-    commands_dir = project_path / ".claude" / "commands"
-    commands_dir.mkdir(parents=True, exist_ok=True)
+    if project_path:
+        commands_dir = project_path / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
 
-    dream_cmd = commands_dir / "cerebro-dream.md"
-    if not dream_cmd.exists():
-        dream_cmd.write_text("""---
+        dream_cmd = commands_dir / "cerebro-dream.md"
+        if not dream_cmd.exists():
+            dream_cmd.write_text("""---
 description: Extrair memórias da sessão atual
 ---
 Execute: ocerebro dream --since 7 --apply
 Mostre o relatório completo do que foi salvo.
 """, encoding="utf-8")
-        print(f"[OK] Slash command criado: {dream_cmd}")
+            print(f"[OK] Slash command criado: {dream_cmd}")
 
-    status_cmd = commands_dir / "cerebro-status.md"
-    if not status_cmd.exists():
-        status_cmd.write_text("""---
+        status_cmd = commands_dir / "cerebro-status.md"
+        if not status_cmd.exists():
+            status_cmd.write_text("""---
 description: Ver status da memória do projeto
 ---
 Execute: ocerebro status
 Liste quantas memórias existem por tipo.
 """, encoding="utf-8")
-        print(f"[OK] Slash command criado: {status_cmd}")
+            print(f"[OK] Slash command criado: {status_cmd}")
 
-    gc_cmd = commands_dir / "cerebro-gc.md"
-    if not gc_cmd.exists():
-        gc_cmd.write_text("""---
+        gc_cmd = commands_dir / "cerebro-gc.md"
+        if not gc_cmd.exists():
+            gc_cmd.write_text("""---
 description: Limpeza de memórias antigas
 ---
 Execute: ocerebro gc --threshold 30
 Mostre o que será arquivado antes de confirmar.
 """, encoding="utf-8")
-        print(f"[OK] Slash command criado: {gc_cmd}")
+            print(f"[OK] Slash command criado: {gc_cmd}")
+
+    # Slash commands globais em ~/.claude/commands/
+    if global_commands:
+        global_commands_dir = Path.home() / ".claude" / "commands"
+        global_commands_dir.mkdir(parents=True, exist_ok=True)
+
+        dream_global = global_commands_dir / "cerebro-dream.md"
+        if not dream_global.exists():
+            dream_global.write_text("""---
+description: Extrair memórias da sessão atual (global)
+---
+Execute: ocerebro dream --since 7 --apply
+Mostre o relatório completo do que foi salvo.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {dream_global}")
+
+        status_global = global_commands_dir / "cerebro-status.md"
+        if not status_global.exists():
+            status_global.write_text("""---
+description: Ver status da memória (global)
+---
+Execute: ocerebro status
+Liste quantas memórias existem por tipo.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {status_global}")
+
+        gc_global = global_commands_dir / "cerebro-gc.md"
+        if not gc_global.exists():
+            gc_global.write_text("""---
+description: Limpeza de memórias antigas (global)
+---
+Execute: ocerebro gc --threshold 30
+Mostre o que será arquivado antes de confirmar.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {gc_global}")
 
     return True
 
@@ -357,6 +393,23 @@ def setup_claude(auto: bool = True) -> bool:
             if "mcp" not in existing_config:
                 existing_config["mcp"] = {}
             existing_config["mcp"]["enabled"] = True
+
+            # Adiciona hook para dream automatico ao final da sessao
+            if "hooks" not in existing_config:
+                existing_config["hooks"] = {}
+
+            # Hook Stop: roda dream ao final de cada sessao
+            existing_config["hooks"]["Stop"] = [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f"{python_cmd} -m src.cli.main dream --since 1 --apply --silent"
+                        }
+                    ]
+                }
+            ]
 
             config_path.write_text(
                 json.dumps(existing_config, indent=2, ensure_ascii=False),
@@ -503,7 +556,7 @@ def main():
             project = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.cwd()
             setup_ocerebro_dir(project)
             setup_hooks(project)
-            setup_slash_commands(project)
+            setup_slash_commands(project=project)
             setup_claude(auto=True)
             sys.exit(0)
 
