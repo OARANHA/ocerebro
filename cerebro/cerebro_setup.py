@@ -231,105 +231,209 @@ Mostre o que será arquivado antes de confirmar.
     return True
 
 
-def setup_claude_desktop() -> bool:
-    """Configura o Claude Desktop ou Claude Code automaticamente."""
+def find_python_with_ocerebro() -> str:
+    """Encontra o executável Python onde ocerebro está instalado.
 
+    Prioridade:
+    1. sys.executable (Python atual)
+    2. python (PATH)
+    3. python3 (PATH)
+
+    Returns:
+        Caminho absoluto do Python ou None se não encontrado
+    """
+    candidates = []
+
+    # Tenta sys.executable primeiro
+    try:
+        import ocerebro  # noqa: F401
+        candidates.append(sys.executable)
+    except ImportError:
+        pass
+
+    # Tenta python e python3 no PATH
+    for cmd in ["python", "python3"]:
+        try:
+            result = subprocess.run(
+                [cmd, "-c", "import ocerebro; print('ok')"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                # Resolve full path
+                result_path = subprocess.run(
+                    [cmd, "-c", "import sys; print(sys.executable)"],
+                    capture_output=True,
+                    text=True
+                )
+                if result_path.returncode == 0:
+                    candidates.append(result_path.stdout.strip())
+        except Exception:
+            continue
+
+    return candidates[0] if candidates else sys.executable
+
+
+def get_claude_code_settings_path() -> Path | None:
+    """Encontra o settings.json do Claude Code."""
+    # Prioridade 1: ~/.claude/settings.json
+    home_settings = Path.home() / ".claude" / "settings.json"
+    if home_settings.exists():
+        return home_settings
+
+    # Prioridade 2: %APPDATA%/Claude/settings.json (Windows)
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            appdata_settings = Path(appdata) / "Claude" / "settings.json"
+            if appdata_settings.exists():
+                return appdata_settings
+
+    # Retorna home_settings mesmo se não existe (para criar)
+    return home_settings
+
+
+def get_claude_desktop_settings_path() -> Path | None:
+    """Encontra o claude_desktop.json do Claude Desktop."""
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            return Path(appdata) / "Claude" / "claude_desktop.json"
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop.json"
+    return None
+
+
+def setup_claude(auto: bool = True) -> bool:
+    """Configura MCP Server automaticamente.
+
+    Args:
+        auto: Se True, detecta automaticamente qual Claude usar.
+              Se False, pergunta ao usuário.
+
+    Returns:
+        True se configurado com sucesso
+    """
     print("=" * 60)
-    print("OCerebro - Setup Automático")
+    print("OCerebro - Configurando MCP Server")
     print("=" * 60)
     print()
 
-    # Encontra todas as configurações
-    configs = find_all_claude_configs()
+    # Encontra Python com ocerebro instalado
+    python_cmd = find_python_with_ocerebro()
+    print(f"[1/5] Python detectado: {python_cmd}")
 
-    # Pergunta qual versão o usuário usa
-    print("Qual versão do Claude você usa?")
-    print("  1. Claude Desktop")
-    print("  2. Claude Code (claude.ai/code)")
-    print("  3. Ambos")
-    choice = input("\nEscolha [1/2/3] (padrão: 2): ").strip() or "2"
-
-    # Pega caminho do OCerebro
-    ocerebro_path = get_ocerebro_path()
-    print(f"\nOCerebro instalado: {ocerebro_path}")
-
-    # Gera nova configuração
-    new_config = generate_mcp_config(ocerebro_path)
+    # Gera configuração MCP
+    mcp_config = {
+        "command": python_cmd,
+        "args": ["-m", "src.mcp.server"],
+        "cwd": str(Path(python_cmd).parent / "Lib" / "site-packages"),
+        "env": {}
+    }
+    print(f"[2/5] Configuração MCP gerada")
 
     configured = []
+    errors = []
 
-    # Configura Claude Desktop se escolhido
-    if choice in ["1", "3"]:
-        config_path = configs.get("desktop")
-        if config_path:
-            print(f"\nConfig do Claude Desktop: {config_path}")
+    # Detecta qual Claude está instalado
+    claude_code_path = get_claude_code_settings_path()
+    claude_desktop_path = get_claude_desktop_settings_path()
+
+    if auto:
+        # Modo automático: configura ambos que existirem
+        targets = []
+        if claude_code_path and claude_code_path.exists():
+            targets.append(("code", claude_code_path))
+        if claude_desktop_path and claude_desktop_path.exists():
+            targets.append(("desktop", claude_desktop_path))
+
+        # Se nenhum existe, configura o default (Claude Code)
+        if not targets:
+            targets.append(("code", claude_code_path))
+    else:
+        # Modo interativo
+        print("Qual versão do Claude você usa?")
+        print("  1. Claude Desktop")
+        print("  2. Claude Code (claude.ai/code)")
+        print("  3. Ambos")
+        choice = input("\nEscolha [1/2/3] (padrão: 2): ").strip() or "2"
+
+        targets = []
+        if choice in ["1", "3"] and claude_desktop_path:
+            targets.append(("desktop", claude_desktop_path))
+        if choice in ["2", "3"] and claude_code_path:
+            targets.append(("code", claude_code_path))
+        if not targets:
+            targets.append(("code", claude_code_path))
+
+    # Configura cada target
+    for target_type, config_path in targets:
+        print(f"[3/5] Configurando {target_type}...")
+
+        try:
             config_path.parent.mkdir(parents=True, exist_ok=True)
 
             existing_config = {}
             if config_path.exists():
-                print(f"Configuração existente encontrada")
-                backup_config(config_path)
                 try:
                     existing_config = json.loads(config_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as e:
-                    print(f"Erro ao ler configuração existente: {e}")
-                    existing_config = {}
+                    backup_config(config_path)
+                except json.JSONDecodeError:
+                    print(f"  Aviso: Config existente inválida, criando nova")
 
-            merged_config = merge_configs(existing_config, new_config)
+            # Merge das configurações
+            if "mcpServers" not in existing_config:
+                existing_config["mcpServers"] = {}
+            existing_config["mcpServers"]["ocerebro"] = mcp_config
+
+            # Garante que MCP está habilitado
+            if "mcp" not in existing_config:
+                existing_config["mcp"] = {}
+            existing_config["mcp"]["enabled"] = True
+
             config_path.write_text(
-                json.dumps(merged_config, indent=2, ensure_ascii=False),
+                json.dumps(existing_config, indent=2, ensure_ascii=False),
                 encoding="utf-8"
             )
-            configured.append("Claude Desktop")
 
-    # Configura Claude Code se escolhido
-    if choice in ["2", "3"]:
-        config_path = configs.get("code")
-        if config_path:
-            print(f"\nConfig do Claude Code: {config_path}")
-            config_path.parent.mkdir(parents=True, exist_ok=True)
+            configured.append(target_type)
+            print(f"  [OK] {target_type}: {config_path}")
 
-            existing_config = {}
-            if config_path.exists():
-                print(f"Configuração existente encontrada")
-                backup_config(config_path)
-                try:
-                    existing_config = json.loads(config_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as e:
-                    print(f"Erro ao ler configuração existente: {e}")
-                    existing_config = {}
+        except Exception as e:
+            errors.append(f"{target_type}: {e}")
+            print(f"  [ERRO] {target_type}: {e}")
 
-            merged_config = merge_configs(existing_config, new_config)
-            config_path.write_text(
-                json.dumps(merged_config, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-            configured.append("Claude Code")
-
-    print()
-    print("[OK] OCerebro configurado em:", ", ".join(configured) if configured else "Nenhum")
-    print()
-    print("⚠️  API keys NÃO foram salvas no config.")
-    print("   Configure no seu shell:")
-    print("   export ANTHROPIC_AUTH_TOKEN=sua-key")
-    print()
-    print("Próximos passos:")
-    print("  1. Reinicie o Claude (Desktop ou Code)")
-    print("  2. As ferramentas do OCerebro estarão disponíveis:")
-    print("     - ocerebro_memory")
-    print("     - ocerebro_search")
-    print("     - ocerebro_checkpoint")
-    print("     - ocerebro_promote")
-    print("     - ocerebro_status")
-    print("     - ocerebro_hooks")
-    print("     - ocerebro_diff")
-    print("     - ocerebro_dream")
-    print("     - ocerebro_remember")
-    print("     - ocerebro_gc")
+    # Resumo
     print()
     print("=" * 60)
+    print("SETUP CONCLUÍDO!")
+    print("=" * 60)
 
-    return True
+    if configured:
+        print(f"\n[OK] MCP Server configurado em: {', '.join(configured)}")
+        print("\nPróximos passos:")
+        print("  1. Reinicie o Claude (feche e abra novamente)")
+        print("  2. As ferramentas estarão disponíveis:")
+        for tool in ["cerebro_memory", "cerebro_search", "cerebro_checkpoint",
+                     "cerebro_promote", "cerebro_status", "cerebro_hooks",
+                     "cerebro_diff", "cerebro_dream", "cerebro_remember", "cerebro_gc"]:
+            print(f"     - {tool}")
+        print("\nPara testar, digite no Claude:")
+        print("  /help  (deve mostrar cerebro_*)")
+        print("  ou: Use cerebro_status")
+    else:
+        print("\n[ERRO] Não foi possível configurar automaticamente.")
+        print("Configure manualmente adicionando ao seu settings.json:")
+        print(json.dumps({"mcpServers": {"ocerebro": mcp_config}}, indent=2))
+
+    if errors:
+        print(f"\nErros encontrados: {len(errors)}")
+        for err in errors:
+            print(f"  - {err}")
+
+    print()
+    return len(configured) > 0
 
 
 def setup_hooks(project_path: Path | None = None) -> bool:
@@ -445,7 +549,8 @@ def main():
         subcommand = sys.argv[1]
 
         if subcommand == "claude":
-            success = setup_claude_desktop()
+            # Força reconfiguração do MCP
+            success = setup_claude(auto=True)
             sys.exit(0 if success else 1)
 
         elif subcommand == "hooks":
@@ -458,9 +563,8 @@ def main():
             setup_ocerebro_dir(project)
             setup_hooks(project)
             setup_slash_commands(project)
-            print()
-            print("Setup completo! Agora execute:")
-            print("  ocerebro setup claude")
+            # Auto-configura Claude
+            setup_claude(auto=True)
             sys.exit(0)
 
         else:
@@ -473,7 +577,7 @@ def main():
 
     setup_ocerebro_dir()
     setup_hooks()
-    setup_claude_desktop()
+    setup_claude(auto=True)
 
 
 if __name__ == "__main__":
