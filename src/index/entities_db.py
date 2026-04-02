@@ -50,6 +50,7 @@ class EntitiesDB:
                 memory_id TEXT,
                 entity_name TEXT,
                 entity_type TEXT,
+                source TEXT DEFAULT 'content',
                 confidence REAL DEFAULT 1.0,
                 span_start INTEGER,
                 span_end INTEGER,
@@ -73,6 +74,11 @@ class EntitiesDB:
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_entities_memory
             ON entities(memory_id)
+        """)
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entities_source
+            ON entities(source)
         """)
 
         # Tabela de cache de hash (para evitar reprocessamento)
@@ -128,7 +134,8 @@ class EntitiesDB:
         confidence: float = 1.0,
         span_start: int = 0,
         span_end: int = 0,
-        context_snippet: str = ""
+        context_snippet: str = "",
+        source: str = "content"
     ) -> str:
         """
         Insere uma entidade.
@@ -141,6 +148,7 @@ class EntitiesDB:
             span_start: Posição inicial no texto
             span_end: Posição final no texto
             context_snippet: Contexto ao redor da entidade
+            source: Origem da entidade ('frontmatter' ou 'content')
 
         Returns:
             ID da entidade
@@ -150,13 +158,14 @@ class EntitiesDB:
         conn = self._connect()
         conn.execute("""
             INSERT OR REPLACE INTO entities
-            (id, memory_id, entity_name, entity_type, confidence, span_start, span_end, context_snippet)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, memory_id, entity_name, entity_type, source, confidence, span_start, span_end, context_snippet)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             entity_id,
             memory_id,
             entity_name,
             entity_type,
+            source,
             confidence,
             span_start,
             span_end,
@@ -207,7 +216,7 @@ class EntitiesDB:
 
     def delete_entities_by_memory(self, memory_id: str) -> int:
         """
-        Remove entidades de uma memória.
+        Remove todas as entidades de uma memória.
 
         Args:
             memory_id: ID da memória
@@ -228,6 +237,27 @@ class EntitiesDB:
             (memory_id,)
         )
 
+        conn.commit()
+        conn.close()
+        return deleted
+
+    def delete_entities_by_source(self, memory_id: str, source: str) -> int:
+        """
+        Remove entidades de uma memória por fonte (frontmatter ou content).
+
+        Args:
+            memory_id: ID da memória
+            source: Fonte das entidades ('frontmatter' ou 'content')
+
+        Returns:
+            Número de entidades removidas
+        """
+        conn = self._connect()
+        cursor = conn.execute(
+            "DELETE FROM entities WHERE memory_id = ? AND source = ?",
+            (memory_id, source)
+        )
+        deleted = cursor.rowcount
         conn.commit()
         conn.close()
         return deleted
@@ -521,7 +551,8 @@ class EntitiesDB:
                 memory_id,
                 f"TYPE:{frontmatter['type']}",
                 "META",
-                confidence=1.0
+                confidence=1.0,
+                source="frontmatter"
             )
             entity_ids.append(eid)
 
@@ -531,7 +562,8 @@ class EntitiesDB:
                 memory_id,
                 project,
                 "PROJECT",
-                confidence=1.0
+                confidence=1.0,
+                source="frontmatter"
             )
             entity_ids.append(eid)
 
@@ -544,7 +576,8 @@ class EntitiesDB:
                         memory_id,
                         f"TAG:{tag}",
                         "TAG",
-                        confidence=1.0
+                        confidence=1.0,
+                        source="frontmatter"
                     )
                     entity_ids.append(eid)
             elif isinstance(tags, list):
@@ -553,7 +586,8 @@ class EntitiesDB:
                         memory_id,
                         f"TAG:{tag}",
                         "TAG",
-                        confidence=1.0
+                        confidence=1.0,
+                        source="frontmatter"
                     )
                     entity_ids.append(eid)
 
@@ -586,8 +620,8 @@ class EntitiesDB:
             if existing:
                 return []  # Já processado, sem mudanças
 
-        # Conteúdo novo ou mudou - remove entidades antigas e reprocessa
-        self.delete_entities_by_memory(memory_id)
+        # Conteúdo novo ou mudou - remove apenas entidades de conteúdo e reprocessa
+        self.delete_entities_by_source(memory_id, "content")
 
         entity_ids = []
 

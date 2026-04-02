@@ -734,24 +734,26 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
 
         # BUG FIX: Registrar entidades no grafo (frontmatter + conteúdo)
+        # ORDEM IMPORTANTE: content primeiro, frontmatter depois
+        # extract_from_content() deleta entidades existentes, então frontmatter deve vir após
         if self.entities_db:
             import yaml
             frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
             if frontmatter_match:
                 try:
                     frontmatter = yaml.safe_load(frontmatter_match.group(1))
-                    # Extrai entidades do frontmatter
-                    self.entities_db.extract_from_frontmatter(
-                        memory_id=mem_name,
-                        frontmatter=frontmatter or {},
-                        project=project
-                    )
-                    # Extrai entidades do conteúdo (spaCy NER)
                     body_content = frontmatter_match.group(2)
+                    # 1. Extrai entidades do conteúdo (spaCy NER) - pode deletar existentes
                     self.entities_db.extract_from_content(
                         memory_id=mem_name,
                         content=body_content,
                         use_spacy=True
+                    )
+                    # 2. Extrai entidades do frontmatter - NÃO são deletadas
+                    self.entities_db.extract_from_frontmatter(
+                        memory_id=mem_name,
+                        frontmatter=frontmatter or {},
+                        project=project
                     )
                 except Exception as e:
                     pass  # Falha silenciosa se frontmatter inválido
