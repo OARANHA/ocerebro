@@ -1,97 +1,107 @@
 #!/usr/bin/env node
 /**
- * OCerebro CLI - Node.js wrapper (zero-friction)
- * Instala automaticamente o pacote Python se necessário.
+ * OCerebro CLI - Node.js wrapper
+ *
+ * Este script chama a CLI Python do OCerebro.
+ * Usa CommonJS para compatibilidade máxima.
  */
 
-const { execSync, execFileSync, spawn } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
 
-// ── 1. Encontra Python 3.10+ no sistema ──────────────────────────────────────
+// Determina o comando Python e valida versão
 function getPythonCmd() {
-    const candidates = ['python', 'python3', 'python3.12', 'python3.11', 'python3.10'];
+    const candidates = [];
 
+    // Tenta python primeiro
+    try {
+        execSync('python --version', { stdio: 'ignore' });
+        candidates.push('python');
+    } catch {
+        // Tenta python3
+        try {
+            execSync('python3 --version', { stdio: 'ignore' });
+            candidates.push('python3');
+        } catch {
+            console.error('Erro: Python não encontrado. Por favor instale Python 3.10+');
+            process.exit(1);
+        }
+    }
+
+    // Valida versão do Python
     for (const cmd of candidates) {
         try {
-            const out = execSync(`${cmd} --version`, {
+            const versionOutput = execSync(`${cmd} --version`, {
                 encoding: 'utf-8',
                 stdio: ['ignore', 'pipe', 'pipe']
             });
-            const m = out.match(/Python (\d+)\.(\d+)/);
-            if (m) {
-                const [major, minor] = [parseInt(m[1]), parseInt(m[2])];
-                if (major === 3 && minor >= 10) return cmd;
+            const match = versionOutput.match(/Python (\d+)\.(\d+)/);
+            if (match) {
+                const major = parseInt(match[1]);
+                const minor = parseInt(match[2]);
+                if (major < 3 || (major === 3 && minor < 10)) {
+                    console.error(`❌ Python ${major}.${minor} detectado.`);
+                    console.error('   OCerebro requer Python 3.10+');
+                    console.error('   Baixe em: https://python.org');
+                    process.exit(1);
+                }
+                return cmd;
             }
-        } catch (_) { continue; }
-    }
-
-    console.error('❌ Python 3.10+ não encontrado.');
-    console.error('   Instale em: https://python.org/downloads');
-    process.exit(1);
-}
-
-// ── 2. Garante que ocerebro está instalado via pip ────────────────────────────
-function ensurePipPackage(pythonCmd) {
-    try {
-        execSync(`${pythonCmd} -c "import src.cli.main"`, { stdio: 'ignore' });
-        return; // já instalado
-    } catch (_) {}
-
-    console.log('📦 Instalando ocerebro via pip...');
-    try {
-        execSync(`${pythonCmd} -m pip install ocerebro --quiet`, { stdio: 'inherit' });
-    } catch (e) {
-        console.error('❌ Falha ao instalar ocerebro via pip.');
-        console.error('   Tente manualmente: pip install ocerebro');
-        process.exit(1);
-    }
-}
-
-// ── 3. Resolve path do main.py instalado ─────────────────────────────────────
-function getCliScript(pythonCmd) {
-    // Estratégia A: import direto (mais confiável)
-    try {
-        const out = execSync(
-            `${pythonCmd} -c "import src.cli.main, os; print(src.cli.main.__file__)"`,
-            { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
-        );
-        const p = out.trim();
-        if (fs.existsSync(p)) return p;
-    } catch (_) {}
-
-    // Estratégia B: pip show Location
-    try {
-        const out = execSync(`${pythonCmd} -m pip show ocerebro`, { encoding: 'utf-8' });
-        const m = out.match(/Location: (.+)/);
-        if (m) {
-            const p = path.join(m[1].trim(), 'src', 'cli', 'main.py');
-            if (fs.existsSync(p)) return p;
+        } catch (err) {
+            continue;
         }
-    } catch (_) {}
+    }
 
-    // Estratégia C: path relativo ao bin/ (dev local)
-    const localScript = path.join(__dirname, '..', 'src', 'cli', 'main.py');
-    if (fs.existsSync(localScript)) return localScript;
-
-    console.error('❌ Não foi possível localizar o CLI do ocerebro.');
-    console.error('   Tente: pip install --force-reinstall ocerebro');
-    process.exit(1);
+    // Fallback para o primeiro candidato
+    return candidates[0];
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const pythonCmd = getPythonCmd();
-ensurePipPackage(pythonCmd);
-const cliScript = getCliScript(pythonCmd);
+// Encontra o caminho do pacote ocerebro
+function getOcerebroPath(pythonCmd) {
+    try {
+        // Usa -c para obter o path real do módulo instalado
+        const output = execSync(
+            `${pythonCmd} -c "import src.cli.main; import os; print(os.path.dirname(os.path.dirname(os.path.dirname(src.cli.main.__file__))))"`,
+            { encoding: 'utf-8' }
+        );
+        return output.trim();
+    } catch {
+        // Fallback: usa pip show para encontrar o Location
+        try {
+            const pipOutput = execSync(`${pythonCmd} -m pip show ocerebro`, { encoding: 'utf-8' });
+            const match = pipOutput.match(/Location: (.+)/);
+            if (match) {
+                return match[1].trim(); // sem subpasta "ocerebro/"
+            }
+        } catch {
+            // Se não estiver instalado via pip, usa path relativo ao bin/
+            return path.join(__dirname, '..');
+        }
+    }
+    return path.join(__dirname, '..');
+}
 
-const proc = spawn(pythonCmd, [cliScript, ...args], {
+// Argumentos da linha de comando
+const args = process.argv.slice(2);
+
+// Comando principal (chamado UMA única vez)
+const pythonCmd = getPythonCmd();
+const ocerebroPath = getOcerebroPath(pythonCmd);
+const cliScript = path.join(ocerebroPath, 'src', 'cli', 'main.py');
+
+// Executa a CLI Python
+const pythonArgs = [cliScript, ...args];
+
+const proc = spawn(pythonCmd, pythonArgs, {
     stdio: 'inherit',
     cwd: process.cwd()
 });
 
-proc.on('close', (code) => process.exit(code ?? 0));
+proc.on('close', (code) => {
+    process.exit(code);
+});
+
 proc.on('error', (err) => {
-    console.error('❌ Erro ao executar OCerebro:', err.message);
+    console.error('Erro ao executar OCerebro:', err.message);
     process.exit(1);
 });
