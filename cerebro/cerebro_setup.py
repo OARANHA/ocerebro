@@ -324,11 +324,14 @@ def setup_claude(auto: bool = True) -> bool:
     python_cmd = find_python_with_ocerebro()
     print(f"[1/5] Python detectado: {python_cmd}")
 
+    # Encontra caminho do OCerebro
+    ocerebro_path = get_ocerebro_path()
+
     # Gera configuração MCP
     mcp_config = {
         "command": python_cmd,
         "args": ["-m", "src.mcp.server"],
-        "cwd": str(Path(python_cmd).parent / "Lib" / "site-packages"),
+        "cwd": str(ocerebro_path),
         "env": {}
     }
     print(f"[2/5] Configuração MCP gerada")
