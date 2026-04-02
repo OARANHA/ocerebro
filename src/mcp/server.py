@@ -282,7 +282,7 @@ class CerebroMCP:
             ),
             Tool(
                 name="cerebro_dream",
-                description="Extração automática de memórias (replica extractMemories do Claude Code) - analisa transcript e extrai memórias para user/feedback/project/reference",
+                description="Prepara prompt para extração de memórias - use cerebro_capture_memory após receber o prompt",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -290,13 +290,26 @@ class CerebroMCP:
                             "type": "integer",
                             "description": "Dias para analisar (padrão: 7)",
                             "default": 7
-                        },
-                        "dry_run": {
-                            "type": "boolean",
-                            "description": "Se True, apenas simula (padrão: True)",
-                            "default": True
                         }
                     }
+                }
+            ),
+            Tool(
+                name="cerebro_capture_memory",
+                description="Captura memórias da conversa atual e salva nos arquivos - requer prompt do cerebro_dream",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Prompt de extração retornado por cerebro_dream"
+                        },
+                        "memory_dir": {
+                            "type": "string",
+                            "description": "Diretório de memória (opcional)"
+                        }
+                    },
+                    "required": ["prompt"]
                 }
             ),
             Tool(
@@ -366,6 +379,8 @@ class CerebroMCP:
                 result = self._remember(arguments)
             elif name == "cerebro_gc":
                 result = self._gc(arguments)
+            elif name == "cerebro_capture_memory":
+                result = self._capture_memory(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -598,13 +613,78 @@ class CerebroMCP:
         return self.memory_diff.generate_report(result, format=format)
 
     def _dream(self, args: Dict[str, Any]) -> str:
-        """Extração automática de memórias"""
-        since_days = args.get("since_days", 7)
-        dry_run = args.get("dry_run", True)
+        """Prepara prompt para extração de memórias.
 
+        Retorna o prompt de extração + instruções para usar cerebro_capture_memory.
+        """
+        from src.consolidation.dream import (
+            run_dream,
+            build_extract_dream_prompt,
+            scan_memory_files,
+            format_memory_manifest,
+            count_transcript_messages
+        )
+
+        since_days = args.get("since_days", 7)
         memory_dir = get_auto_mem_path()
-        result = run_dream(memory_dir=memory_dir, since_days=since_days, dry_run=dry_run)
-        return generate_dream_report(result)
+
+        # Scan de memórias existentes
+        existing = scan_memory_files(memory_dir)
+        existing_manifest = format_memory_manifest(existing)
+
+        # Contagem de mensagens novas
+        message_count = count_transcript_messages(since_days)
+
+        if message_count == 0:
+            return "Nenhuma mensagem nova nos últimos {} dias. O prompt de extração não será gerado.".format(since_days)
+
+        # Build do prompt
+        prompt_sections = build_extract_dream_prompt(
+            new_message_count=message_count,
+            existing_memories=existing_manifest,
+            memory_dir=memory_dir,
+        )
+        full_prompt = "\n".join(prompt_sections)
+
+        return f"""=== PROMPT DE EXTRAÇÃO ({message_count} mensagens, {since_days} dias) ===
+
+{full_prompt}
+
+---
+INSTRUÇÃO: Copie este prompt e use a ferramenta cerebro_capture_memory com:
+{{"prompt": "<cole o prompt acima>"}}
+
+Ou execute manualmente: ocerebro dream --since {since_days} --apply
+"""
+
+    def _capture_memory(self, args: Dict[str, Any]) -> str:
+        """Captura memórias usando o prompt fornecido.
+
+        Esta ferramenta deve ser chamada após cerebro_dream retornar o prompt.
+        """
+        prompt = args.get("prompt")
+        if not prompt:
+            return "Erro: 'prompt' é obrigatório para cerebro_capture_memory"
+
+        memory_dir_str = args.get("memory_dir")
+        memory_dir = Path(memory_dir_str) if memory_dir_str else get_auto_mem_path()
+
+        # Instrui o Claude a usar o prompt para extrair memórias
+        return f"""Prompt de extração recebido.
+
+Diretório de memória: {memory_dir}
+
+O Claude deve agora analisar a conversa usando este prompt e salvar as memórias
+nos arquivos .md apropriados em {memory_dir}
+
+Formato esperado:
+- user_*.md para memórias sobre o usuário
+- feedback_*.md para feedbacks e convenções
+- project_*.md para decisões e fatos do projeto
+- reference_*.md para ponteiros externos
+
+Use FileWrite para criar os arquivos de memória.
+"""
 
     def _remember(self, args: Dict[str, Any]) -> str:
         """Revisão e promoção de memórias"""
