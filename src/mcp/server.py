@@ -371,6 +371,20 @@ class CerebroMCP:
                     },
                     "required": ["entity"]
                 }
+            ),
+            Tool(
+                name="cerebro_dashboard",
+                description="Abre o dashboard visual do OCerebro no browser (localhost:7999) - interface gráfica para explorar memórias, grafo de entidades e timeline",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "port": {
+                            "type": "integer",
+                            "description": "Porta do servidor (padrão: 7999)",
+                            "default": 7999
+                        }
+                    }
+                }
             )
         ]
 
@@ -410,6 +424,8 @@ class CerebroMCP:
                 result = self._capture_memory(arguments)
             elif name == "cerebro_graph":
                 result = self._cerebro_graph(arguments)
+            elif name == "cerebro_dashboard":
+                result = self._cerebro_dashboard(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -878,6 +894,36 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
                 lines.append(f"- {edge['source']} → {edge['target']} ({edge['type']})")
 
         return "\n".join(lines)
+
+    def _cerebro_dashboard(self, args: Dict[str, Any]) -> str:
+        """Abre o dashboard visual do OCerebro no browser"""
+        try:
+            from src.dashboard.server import DashboardServer
+
+            port = args.get("port", 7999)
+
+            # Instancia servidor
+            dashboard_server = DashboardServer(
+                cerebro_path=self.cerebro_path,
+                metadata_db=self.metadata_db,
+                embeddings_db=self.embeddings_db,
+                entities_db=self.entities_db
+            )
+
+            # Inicia se não estiver rodando
+            if not dashboard_server.is_running(port):
+                started = dashboard_server.start(port)
+                if not started:
+                    return "⚠️ Não foi possível iniciar o servidor do dashboard. Verifique se a porta está disponível."
+
+            # Abre browser
+            dashboard_server.open_browser(port)
+
+            return f"✅ Dashboard aberto em http://localhost:{port}"
+        except ImportError as e:
+            return f"Erro: Não foi possível importar o dashboard. Verifique se fastapi e uvicorn estão instalados. ({e})"
+        except Exception as e:
+            return f"Erro ao abrir dashboard: {e}"
 
 
 async def main():
