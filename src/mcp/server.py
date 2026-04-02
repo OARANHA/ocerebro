@@ -532,7 +532,8 @@ class CerebroMCP:
             "",
             "Índice:",
             f"  Metadata DB: {self.cerebro_path / 'index' / 'metadata.db'}",
-            f"  Embeddings DB: {self.cerebro_path / 'index' / 'embeddings.db'}"
+            f"  Embeddings DB: {self.cerebro_path / 'index' / 'embeddings.db'}",
+            f"  Entities DB: {self.cerebro_path / 'index' / 'entities.db'}"
         ]
 
         return "\n".join(lines)
@@ -712,8 +713,14 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
 
         desc_match = re.search(r'description:\s*(.*)', content)
         type_match = re.search(r'type:\s*(.*)', content)
+        project_match = re.search(r'project:\s*(.*)', content)
+        tags_match = re.search(r'tags:\s*(.*)', content)
+
         desc = desc_match.group(1).strip() if desc_match else "sem descrição"
         m_type = type_match.group(1).strip() if type_match else "project"
+        project = project_match.group(1).strip() if project_match else "unknown"
+        tags = tags_match.group(1).strip() if tags_match else ""
+
         ts = datetime.now().strftime("%Y-%m-%d")
         entry = f"- [{m_type}] {mem_name}.md ({ts}): {desc}\n"
 
@@ -725,6 +732,29 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
                     f.write(entry)
         else:
             index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
+
+        # BUG FIX: Registrar entidades no grafo (frontmatter + conteúdo)
+        if self.entities_db:
+            import yaml
+            frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
+            if frontmatter_match:
+                try:
+                    frontmatter = yaml.safe_load(frontmatter_match.group(1))
+                    # Extrai entidades do frontmatter
+                    self.entities_db.extract_from_frontmatter(
+                        memory_id=mem_name,
+                        frontmatter=frontmatter or {},
+                        project=project
+                    )
+                    # Extrai entidades do conteúdo (spaCy NER)
+                    body_content = frontmatter_match.group(2)
+                    self.entities_db.extract_from_content(
+                        memory_id=mem_name,
+                        content=body_content,
+                        use_spacy=True
+                    )
+                except Exception as e:
+                    pass  # Falha silenciosa se frontmatter inválido
 
         return f"✅ Memória '{mem_name}' salva em {file_path}"
 

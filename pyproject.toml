@@ -37,6 +37,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "mcp>=1.0.0",
     "anthropic>=0.40.0",
+    "spacy>=3.5.0",
 ]
 
 [project.optional-dependencies]

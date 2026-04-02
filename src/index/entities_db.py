@@ -75,6 +75,21 @@ class EntitiesDB:
             ON entities(memory_id)
         """)
 
+        # Tabela de cache de hash (para evitar reprocessamento)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS entity_cache (
+                memory_id TEXT PRIMARY KEY,
+                content_hash TEXT,
+                processed_at TEXT DEFAULT (datetime('now')),
+                entity_count INTEGER DEFAULT 0
+            )
+        """)
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entity_cache_hash
+            ON entity_cache(content_hash)
+        """)
+
         # Tabela de relacionamentos
         conn.execute("""
             CREATE TABLE IF NOT EXISTS entity_relationships (
@@ -543,6 +558,232 @@ class EntitiesDB:
                     entity_ids.append(eid)
 
         return entity_ids
+
+    def extract_from_content(
+        self,
+        memory_id: str,
+        content: str,
+        use_spacy: bool = True
+    ) -> List[str]:
+        """
+        Extrai entidades do conteúdo usando spaCy NER.
+
+        Args:
+            memory_id: ID da memória
+            content: Conteúdo de texto
+            use_spacy: Usar spaCy (padrão: True)
+
+        Returns:
+            Lista de IDs de entidades criadas
+        """
+        # Verifica cache - só processa se conteúdo mudou
+        cached_hash = self.get_cached_hash(memory_id)
+        current_hash = self._compute_hash(content)
+
+        if cached_hash == current_hash:
+            # Conteúdo igual, verifica se já tem entidades
+            existing = self.get_entities_by_memory(memory_id)
+            if existing:
+                return []  # Já processado, sem mudanças
+
+        # Conteúdo novo ou mudou - remove entidades antigas e reprocessa
+        self.delete_entities_by_memory(memory_id)
+
+        entity_ids = []
+
+        if use_spacy:
+            try:
+                import spacy
+                from spacy import Language
+
+                # Carrega modelo (download na primeira vez)
+                try:
+                    nlp: Language = spacy.load("pt_core_news_sm")
+                except OSError:
+                    # Modelo não instalado - tenta instalar
+                    import subprocess
+                    subprocess.run(
+                        ["python", "-m", "spacy", "download", "pt_core_news_sm"],
+                        capture_output=True
+                    )
+                    nlp = spacy.load("pt_core_news_sm")
+
+                # Processa texto
+                doc = nlp(content[:5000])  # Limita a 5000 chars para performance
+
+                # Mapeia labels do spaCy para nossos tipos
+                label_map = {
+                    "ORG": "ORG",
+                    "PERSON": "PERSON",
+                    "GPE": "LOC",
+                    "LOC": "LOC",
+                    "PRODUCT": "PRODUCT",
+                    "EVENT": "EVENT",
+                    "WORK_OF_ART": "PRODUCT",
+                    "LAW": "PRODUCT",
+                    "LANGUAGE": "TECH",
+                }
+
+                for ent in doc.ents:
+                    if ent.label_ in label_map:
+                        entity_type = label_map[ent.label_]
+                        confidence = float(ent._.get("nerd_score", 0.8)) if hasattr(ent._, "nerd_score") else 0.8
+
+                        eid = self.insert_entity(
+                            memory_id,
+                            ent.text,
+                            entity_type,
+                            confidence=confidence,
+                            span_start=ent.start_char,
+                            span_end=ent.end_char,
+                            context_snippet=content[max(0, ent.start_char - 25):ent.end_char + 25][:50]
+                        )
+                        entity_ids.append(eid)
+
+                # Atualiza cache após processamento
+                self.update_cache(memory_id, content, len(entity_ids))
+
+            except ImportError:
+                # spaCy não disponível - usa fallback simples
+                entity_ids.extend(self._extract_entities_fallback(memory_id, content))
+                # Atualiza cache após processamento
+                self.update_cache(memory_id, content, len(entity_ids))
+            except Exception:
+                # Falha silenciosa - não quebra o fluxo
+                pass
+        else:
+            entity_ids.extend(self._extract_entities_fallback(memory_id, content))
+            # Atualiza cache após processamento
+            self.update_cache(memory_id, content, len(entity_ids))
+
+        return entity_ids
+
+    def _extract_entities_fallback(
+        self,
+        memory_id: str,
+        content: str
+    ) -> List[str]:
+        """
+        Fallback sem spaCy - usa heurísticas simples.
+
+        Args:
+            memory_id: ID da memória
+            content: Conteúdo de texto
+
+        Returns:
+            Lista de IDs de entidades criadas
+        """
+        entity_ids = []
+
+        # Palavras capitalizadas (prováveis nomes próprios/ORGs)
+        capitalized = re.findall(r'\b[A-Z][a-zA-Z]{2,}\b', content[:2000])
+
+        # Filtra termos comuns que não são entidades
+        common_words = {
+            "The", "This", "That", "These", "Those", "What", "When", "Where", "Why", "How",
+            "Para", "Com", "Por", "Em", "De", "Do", "Da", "Dos", "Das", "Uma", "Um",
+            "Como", "Quando", "Onde", "Qual", "Quais", "Quem", "Sobre"
+        }
+
+        entities = set(e for e in capitalized if e not in common_words)
+
+        for entity in list(entities)[:20]:  # Limita a 20 entidades
+            eid = self.insert_entity(
+                memory_id,
+                entity,
+                "ORG" if entity[0].isupper() else "PERSON",
+                confidence=0.5,  # Baixa confiança sem spaCy
+                context_snippet=entity
+            )
+            entity_ids.append(eid)
+
+        return entity_ids
+
+    # ========================================================================
+    # CACHE DE HASH (para evitar reprocessamento)
+    # ========================================================================
+
+    def _compute_hash(self, content: str) -> str:
+        """
+        Computa hash do conteúdo.
+
+        Args:
+            content: Conteúdo de texto
+
+        Returns:
+            Hash SHA256 (primeiros 16 chars)
+        """
+        import hashlib
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
+
+    def get_cached_hash(self, memory_id: str) -> Optional[str]:
+        """
+        Obtém hash em cache de uma memória.
+
+        Args:
+            memory_id: ID da memória
+
+        Returns:
+            Hash armazenado ou None
+        """
+        conn = self._connect()
+        cursor = conn.execute(
+            "SELECT content_hash FROM entity_cache WHERE memory_id = ?",
+            (memory_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row["content_hash"] if row else None
+
+    def is_content_changed(self, memory_id: str, content: str) -> bool:
+        """
+        Verifica se conteúdo mudou desde último processamento.
+
+        Args:
+            memory_id: ID da memória
+            content: Conteúdo de texto
+
+        Returns:
+            True se mudou, False se igual
+        """
+        current_hash = self._compute_hash(content)
+        cached_hash = self.get_cached_hash(memory_id)
+        return cached_hash != current_hash
+
+    def update_cache(self, memory_id: str, content: str, entity_count: int) -> None:
+        """
+        Atualiza cache de hash após processamento.
+
+        Args:
+            memory_id: ID da memória
+            content: Conteúdo de texto
+            entity_count: Número de entidades extraídas
+        """
+        content_hash = self._compute_hash(content)
+
+        conn = self._connect()
+        conn.execute("""
+            INSERT OR REPLACE INTO entity_cache
+            (memory_id, content_hash, processed_at, entity_count)
+            VALUES (?, ?, datetime('now'), ?)
+        """, (memory_id, content_hash, entity_count))
+        conn.commit()
+        conn.close()
+
+    def clear_cache(self, memory_id: str) -> None:
+        """
+        Limpa cache de uma memória.
+
+        Args:
+            memory_id: ID da memória
+        """
+        conn = self._connect()
+        conn.execute(
+            "DELETE FROM entity_cache WHERE memory_id = ?",
+            (memory_id,)
+        )
+        conn.commit()
+        conn.close()
 
     # ========================================================================
     # ESTATÍSTICAS

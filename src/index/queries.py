@@ -87,6 +87,7 @@ class QueryEngine:
         if use_fts:
             fts_results = self._search_fts(query, project, mem_type, limit)
             for r in fts_results:
+                r.score *= fts_weight  # Aplica peso FTS desde o início
                 results[r.memory_id] = r
 
         # Busca Semantic
@@ -94,12 +95,9 @@ class QueryEngine:
             semantic_results = self._search_semantic(query, project, limit)
             for r in semantic_results:
                 if r.memory_id in results:
-                    # Combina scores
+                    # Combina scores: média ponderada (FTS já tem peso aplicado)
                     existing = results[r.memory_id]
-                    combined_score = (
-                        existing.score * fts_weight +
-                        r.score * semantic_weight
-                    )
+                    combined_score = existing.score + (r.score * semantic_weight)
                     results[r.memory_id] = QueryResult(
                         memory_id=r.memory_id,
                         type=r.type,
@@ -118,12 +116,9 @@ class QueryEngine:
             graph_results = self._search_by_graph(query, limit)
             for r in graph_results:
                 if r.memory_id in results:
-                    # Combina scores
+                    # Combina scores: soma ponderada (scores anteriores já têm peso)
                     existing = results[r.memory_id]
-                    combined_score = (
-                        existing.score * (1 - graph_weight) +
-                        r.score * graph_weight
-                    )
+                    combined_score = existing.score + (r.score * graph_weight)
                     results[r.memory_id] = QueryResult(
                         memory_id=r.memory_id,
                         type=r.type,

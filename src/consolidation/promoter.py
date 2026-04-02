@@ -227,8 +227,9 @@ class Promoter:
             content=content
         )
 
-        # Extrai entidades do frontmatter e registra no grafo
+        # Extrai entidades do frontmatter E do conteúdo
         self._extract_entities_from_frontmatter(draft_id, frontmatter, project)
+        self._extract_entities_from_content(draft_id, content)
 
         return PromotionResult(
             success=True,
@@ -307,8 +308,9 @@ class Promoter:
             content=body
         )
 
-        # Extrai entidades do frontmatter e registra no grafo
+        # Extrai entidades do frontmatter E do conteúdo
         self._extract_entities_from_frontmatter(draft_id, frontmatter, project)
+        self._extract_entities_from_content(draft_id, body)
 
         return PromotionResult(
             success=True,
@@ -476,4 +478,28 @@ class Promoter:
             memory_id=memory_id,
             frontmatter=frontmatter,
             project=project
+        )
+
+    def _extract_entities_from_content(
+        self,
+        memory_id: str,
+        content: str
+    ) -> List[str]:
+        """
+        Extrai entidades do conteúdo usando spaCy NER e registra no grafo.
+
+        Args:
+            memory_id: ID da memória
+            content: Conteúdo de texto
+
+        Returns:
+            Lista de IDs de entidades criadas
+        """
+        if not self.entities_db:
+            return []
+
+        return self.entities_db.extract_from_content(
+            memory_id=memory_id,
+            content=content,
+            use_spacy=True
         )
