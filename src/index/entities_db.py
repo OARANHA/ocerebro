@@ -614,14 +614,18 @@ class EntitiesDB:
         cached_hash = self.get_cached_hash(memory_id)
         current_hash = self._compute_hash(content)
 
+        skip_delete = False
         if cached_hash == current_hash:
             # Conteúdo igual, verifica se já tem entidades
             existing = self.get_entities_by_memory(memory_id)
             if existing:
                 return []  # Já processado, sem mudanças
+            # Cache bate mas entidades vazias (ex: banco limpo) - reprocessa sem delete
+            skip_delete = True
 
         # Conteúdo novo ou mudou - remove apenas entidades de conteúdo e reprocessa
-        self.delete_entities_by_source(memory_id, "content")
+        if not skip_delete:
+            self.delete_entities_by_source(memory_id, "content")
 
         entity_ids = []
 

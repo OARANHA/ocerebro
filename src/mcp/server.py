@@ -693,6 +693,7 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
     def _capture_memory(self, args: Dict[str, Any]) -> str:
         """Salva uma memória no diretório nativo do Claude Code."""
         import re
+        import yaml
         from datetime import datetime
         from src.core.paths import get_memory_index
 
@@ -711,15 +712,36 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
         file_path = mem_dir / f"{mem_name}.md"
         file_path.write_text(content, encoding="utf-8")
 
-        desc_match = re.search(r'description:\s*(.*)', content)
-        type_match = re.search(r'type:\s*(.*)', content)
-        project_match = re.search(r'project:\s*(.*)', content)
-        tags_match = re.search(r'tags:\s*(.*)', content)
+        # Parse frontmatter uma única vez com yaml.safe_load
+        frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
+        frontmatter = {}
+        body_content = ""
+        if frontmatter_match:
+            try:
+                frontmatter = yaml.safe_load(frontmatter_match.group(1)) or {}
+                body_content = frontmatter_match.group(2)
+            except Exception:
+                pass  # Fallback para regex se yaml falhar
 
-        desc = desc_match.group(1).strip() if desc_match else "sem descrição"
-        m_type = type_match.group(1).strip() if type_match else "project"
-        project = project_match.group(1).strip() if project_match else "unknown"
-        tags = tags_match.group(1).strip() if tags_match else ""
+        # Extrai variáveis do frontmatter parseado (fallback para regex se necessário)
+        m_type = frontmatter.get('type', '')
+        project = frontmatter.get('project', '')
+        tags = frontmatter.get('tags', '')
+        desc = frontmatter.get('description', '')
+
+        # Fallback via regex se frontmatter parsing falhou
+        if not m_type:
+            type_match = re.search(r'type:\s*(.*)', content)
+            m_type = type_match.group(1).strip() if type_match else "project"
+        if not project:
+            project_match = re.search(r'project:\s*(.*)', content)
+            project = project_match.group(1).strip() if project_match else "unknown"
+        if not tags:
+            tags_match = re.search(r'tags:\s*(.*)', content)
+            tags = tags_match.group(1).strip() if tags_match else ""
+        if not desc:
+            desc_match = re.search(r'description:\s*(.*)', content)
+            desc = desc_match.group(1).strip() if desc_match else "sem descrição"
 
         ts = datetime.now().strftime("%Y-%m-%d")
         entry = f"- [{m_type}] {mem_name}.md ({ts}): {desc}\n"
@@ -733,30 +755,25 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
         else:
             index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
 
-        # BUG FIX: Registrar entidades no grafo (frontmatter + conteúdo)
+        # Registrar entidades no grafo (frontmatter + conteúdo)
         # ORDEM IMPORTANTE: content primeiro, frontmatter depois
-        # extract_from_content() deleta entidades existentes, então frontmatter deve vir após
-        if self.entities_db:
-            import yaml
-            frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
-            if frontmatter_match:
-                try:
-                    frontmatter = yaml.safe_load(frontmatter_match.group(1))
-                    body_content = frontmatter_match.group(2)
-                    # 1. Extrai entidades do conteúdo (spaCy NER) - pode deletar existentes
-                    self.entities_db.extract_from_content(
-                        memory_id=mem_name,
-                        content=body_content,
-                        use_spacy=True
-                    )
-                    # 2. Extrai entidades do frontmatter - NÃO são deletadas
-                    self.entities_db.extract_from_frontmatter(
-                        memory_id=mem_name,
-                        frontmatter=frontmatter or {},
-                        project=project
-                    )
-                except Exception as e:
-                    pass  # Falha silenciosa se frontmatter inválido
+        # extract_from_content() deleta apenas entidades 'content', preservando 'frontmatter'
+        if self.entities_db and frontmatter_match:
+            try:
+                # 1. Extrai entidades do conteúdo (spaCy NER)
+                self.entities_db.extract_from_content(
+                    memory_id=mem_name,
+                    content=body_content,
+                    use_spacy=True
+                )
+                # 2. Extrai entidades do frontmatter - preservadas
+                self.entities_db.extract_from_frontmatter(
+                    memory_id=mem_name,
+                    frontmatter=frontmatter,
+                    project=project
+                )
+            except Exception:
+                pass  # Falha silenciosa se frontmatter inválido
 
         return f"✅ Memória '{mem_name}' salva em {file_path}"
 
