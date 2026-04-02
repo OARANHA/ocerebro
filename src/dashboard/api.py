@@ -214,18 +214,14 @@ def create_router(
     ):
         """Retorna lista de memórias com metadados"""
         try:
-            conn = router.metadata_db._connect()
-
             if q:
-                # Busca full-text
-                rows = conn.execute("""
-                    SELECT id, title, type, project, tags, created_at, updated_at
-                    FROM memories
-                    WHERE content MATCH ?
-                    LIMIT ?
-                """, (q, limit)).fetchall()
+                # Busca full-text usando método existente
+                rows = router.metadata_db.search_fts(q, project)
+                # Limita resultados
+                rows = rows[:limit]
             else:
                 # Busca com filtros
+                conn = router.metadata_db._connect()
                 query = "SELECT id, title, type, project, tags, created_at, updated_at FROM memories WHERE 1=1"
                 params = []
 
@@ -241,6 +237,7 @@ def create_router(
                 params.append(limit)
 
                 rows = conn.execute(query, params).fetchall()
+                conn.close()
 
             memories = []
             for row in rows:
@@ -260,7 +257,6 @@ def create_router(
                     "gc_risk": round(gc_risk, 2)
                 })
 
-            conn.close()
             return memories
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -280,10 +276,6 @@ def create_router(
             # Procura em official/
             official_path = router.cerebro_path / "official"
             if official_path.exists():
-                for root, dirs, files in [(official_path.parent, official_path.name, [])]:
-                    for dirpath, dirnames, filenames in [(official_path, [], [])]:
-                        pass
-
                 # Procura recursivamente
                 for md_file in official_path.rglob(f"{memory_id}.md"):
                     content = md_file.read_text(encoding="utf-8")
