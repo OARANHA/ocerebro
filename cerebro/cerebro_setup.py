@@ -268,6 +268,16 @@ Se confirmar, chame novamente com dry_run=false.
 """, encoding="utf-8")
             print(f"[OK] Slash command criado: {remember_cmd}")
 
+        dashboard_cmd = commands_dir / "cerebro-dashboard.md"
+        if not dashboard_cmd.exists():
+            dashboard_cmd.write_text("""---
+description: Abrir dashboard visual do OCerebro
+---
+Use a ferramenta cerebro_dashboard com port=7999.
+Após abrir, confirme ao usuário a URL http://localhost:7999 onde o dashboard está disponível.
+""", encoding="utf-8")
+            print(f"[OK] Slash command criado: {dashboard_cmd}")
+
     # Slash commands globais em ~/.claude/commands/
     if global_commands:
         global_commands_dir = Path.home() / ".claude" / "commands"
@@ -346,6 +356,16 @@ Mostre o relatório completo. Pergunte ao usuário se deseja aplicar as mudança
 Se confirmar, chame novamente com dry_run=false.
 """, encoding="utf-8")
             print(f"[OK] Slash command global criado: {remember_global}")
+
+        dashboard_global = global_commands_dir / "cerebro-dashboard.md"
+        if not dashboard_global.exists():
+            dashboard_global.write_text("""---
+description: Abrir dashboard visual do OCerebro (global)
+---
+Use a ferramenta cerebro_dashboard com port=7999.
+Após abrir, confirme ao usuário a URL http://localhost:7999 onde o dashboard está disponível.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {dashboard_global}")
 
     return True
 
