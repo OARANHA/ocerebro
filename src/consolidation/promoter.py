@@ -37,7 +37,8 @@ class Promoter:
     def __init__(
         self,
         working_storage: YAMLStorage,
-        official_storage: MarkdownStorage
+        official_storage: MarkdownStorage,
+        entities_db_path: Optional[Path] = None
     ):
         """
         Inicializa o Promoter.
@@ -45,9 +46,12 @@ class Promoter:
         Args:
             working_storage: Instância do YAMLStorage
             official_storage: Instância do MarkdownStorage
+            entities_db_path: Path para o EntitiesDB (opcional)
         """
         self.working_storage = working_storage
         self.official_storage = official_storage
+        self.entities_db_path = entities_db_path
+        self._entities_db = None
 
     def promote_session(
         self,
@@ -223,6 +227,9 @@ class Promoter:
             content=content
         )
 
+        # Extrai entidades do frontmatter e registra no grafo
+        self._extract_entities_from_frontmatter(draft_id, frontmatter, project)
+
         return PromotionResult(
             success=True,
             source_type=draft.get("type", "session"),
@@ -299,6 +306,9 @@ class Promoter:
             frontmatter=frontmatter,
             content=body
         )
+
+        # Extrai entidades do frontmatter e registra no grafo
+        self._extract_entities_from_frontmatter(draft_id, frontmatter, project)
 
         return PromotionResult(
             success=True,
@@ -433,3 +443,37 @@ class Promoter:
             if existing:
                 existing.update(draft)
                 self.working_storage.write_feature(project, draft_id, existing)
+
+    @property
+    def entities_db(self):
+        """Lazy load do EntitiesDB"""
+        if self._entities_db is None and self.entities_db_path:
+            from src.index.entities_db import EntitiesDB
+            self._entities_db = EntitiesDB(self.entities_db_path)
+        return self._entities_db
+
+    def _extract_entities_from_frontmatter(
+        self,
+        memory_id: str,
+        frontmatter: Dict[str, Any],
+        project: str
+    ) -> List[str]:
+        """
+        Extrai entidades do frontmatter e registra no grafo.
+
+        Args:
+            memory_id: ID da memória
+            frontmatter: Dicionário com metadados
+            project: Nome do projeto
+
+        Returns:
+            Lista de IDs de entidades criadas
+        """
+        if not self.entities_db:
+            return []
+
+        return self.entities_db.extract_from_frontmatter(
+            memory_id=memory_id,
+            frontmatter=frontmatter,
+            project=project
+        )

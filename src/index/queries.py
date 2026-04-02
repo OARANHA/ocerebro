@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .metadata_db import MetadataDB
 from .embeddings_db import EmbeddingsDB
+from .entities_db import EntitiesDB
 
 
 @dataclass
@@ -16,7 +17,7 @@ class QueryResult:
     project: str
     title: str
     score: float
-    source: str  # 'fts', 'semantic', 'metadata'
+    source: str  # 'fts', 'semantic', 'metadata', 'graph'
     metadata: Dict[str, Any] = None
 
 
@@ -24,16 +25,18 @@ class QueryEngine:
     """
     Engine de consultas híbridas.
 
-    Combina três tipos de busca:
+    Combina quatro tipos de busca:
     - Metadata: filtros estruturados (projeto, tipo, tags)
     - FTS: busca full-text no conteúdo
     - Semantic: busca por similaridade de embeddings
+    - Graph: busca por entidades e relacionamentos
     """
 
     def __init__(
         self,
         metadata_db: MetadataDB,
-        embeddings_db: EmbeddingsDB
+        embeddings_db: EmbeddingsDB,
+        entities_db: Optional[EntitiesDB] = None
     ):
         """
         Inicializa o QueryEngine.
@@ -41,9 +44,11 @@ class QueryEngine:
         Args:
             metadata_db: Instância do MetadataDB
             embeddings_db: Instância do EmbeddingsDB
+            entities_db: Instância do EntitiesDB (opcional)
         """
         self.metadata_db = metadata_db
         self.embeddings_db = embeddings_db
+        self.entities_db = entities_db
 
     def search(
         self,
@@ -53,11 +58,13 @@ class QueryEngine:
         limit: int = 10,
         use_fts: bool = True,
         use_semantic: bool = True,
-        fts_weight: float = 0.4,
-        semantic_weight: float = 0.6
+        use_graph: bool = True,
+        fts_weight: float = 0.3,
+        semantic_weight: float = 0.5,
+        graph_weight: float = 0.2
     ) -> List[QueryResult]:
         """
-        Busca híbrida combinando FTS e semantic.
+        Busca híbrida combinando FTS, semantic e graph.
 
         Args:
             query: Texto de busca
@@ -66,8 +73,10 @@ class QueryEngine:
             limit: Limite de resultados
             use_fts: Usar busca FTS
             use_semantic: Usar busca semantic
+            use_graph: Usar busca por graph
             fts_weight: Peso da busca FTS
             semantic_weight: Peso da busca semantic
+            graph_weight: Peso da busca graph
 
         Returns:
             Lista de resultados ordenados por relevância
@@ -102,6 +111,30 @@ class QueryEngine:
                     )
                 else:
                     r.score *= semantic_weight
+                    results[r.memory_id] = r
+
+        # Busca por Graph (entidades)
+        if use_graph and self.entities_db:
+            graph_results = self._search_by_graph(query, limit)
+            for r in graph_results:
+                if r.memory_id in results:
+                    # Combina scores
+                    existing = results[r.memory_id]
+                    combined_score = (
+                        existing.score * (1 - graph_weight) +
+                        r.score * graph_weight
+                    )
+                    results[r.memory_id] = QueryResult(
+                        memory_id=r.memory_id,
+                        type=r.type,
+                        project=r.project,
+                        title=r.title,
+                        score=combined_score,
+                        source="hybrid",
+                        metadata=r.metadata
+                    )
+                else:
+                    r.score *= graph_weight
                     results[r.memory_id] = r
 
         # Filtra por tipo se especificado
@@ -193,6 +226,48 @@ class QueryEngine:
                 metadata={
                     "similarity": item["similarity"],
                     "content_hash": item.get("content_hash")
+                }
+            ))
+
+        return results
+
+    def _search_by_graph(
+        self,
+        query: str,
+        limit: int
+    ) -> List[QueryResult]:
+        """
+        Busca por entidades no grafo.
+
+        Extrai entidades da query e retorna memórias conectadas.
+
+        Args:
+            query: Texto de busca
+            limit: Limite de resultados
+
+        Returns:
+            Lista de resultados com score de grafo
+        """
+        if not self.entities_db:
+            return []
+
+        graph_results = self.entities_db.search_by_query(query, limit * 2)
+
+        results = []
+        for item in graph_results:
+            # Busca metadados adicionais
+            memory = self.metadata_db.get_by_id(item["memory_id"])
+
+            results.append(QueryResult(
+                memory_id=item["memory_id"],
+                type=memory.get("type", "unknown") if memory else "unknown",
+                project=memory.get("project", "unknown") if memory else "unknown",
+                title=memory.get("title", item["memory_id"]) if memory else item["memory_id"],
+                score=item["score"],
+                source="graph",
+                metadata={
+                    "matched_entities": item.get("matched_entities", []),
+                    "graph_score": item["score"]
                 }
             ))
 

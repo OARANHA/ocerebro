@@ -26,6 +26,7 @@ from src.consolidation.extractor import Extractor
 from src.consolidation.promoter import Promoter
 from src.index.metadata_db import MetadataDB
 from src.index.embeddings_db import EmbeddingsDB
+from src.index.entities_db import EntitiesDB
 from src.index.queries import QueryEngine
 from src.hooks.custom_loader import HooksLoader, HookRunner
 from src.diff.memory_diff import MemoryDiff
@@ -81,10 +82,15 @@ class CerebroMCP:
 
         self.metadata_db = MetadataDB(self.cerebro_path / "index" / "metadata.db")
         self.embeddings_db = EmbeddingsDB(self.cerebro_path / "index" / "embeddings.db")
-        self.query_engine = QueryEngine(self.metadata_db, self.embeddings_db)
+        self.entities_db = EntitiesDB(self.cerebro_path / "index" / "entities.db")
+        self.query_engine = QueryEngine(self.metadata_db, self.embeddings_db, self.entities_db)
 
         self.extractor = Extractor(self.raw_storage, self.working_storage)
-        self.promoter = Promoter(self.working_storage, self.official_storage)
+        self.promoter = Promoter(
+            self.working_storage,
+            self.official_storage,
+            self.cerebro_path / "index" / "entities.db"
+        )
 
         self.memory_view = MemoryView(
             self.cerebro_path,
@@ -340,6 +346,31 @@ class CerebroMCP:
                         }
                     }
                 }
+            ),
+            Tool(
+                name="cerebro_graph",
+                description="Explora grafo de entidades - mostra conexões entre projetos, tecnologias, pessoas e decisões",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity": {
+                            "type": "string",
+                            "description": "Nome da entidade para iniciar traversal (ex: 'MedicsPro', 'JWT', 'autenticação')"
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Profundidade máxima do traversal (1-3, padrão: 2)",
+                            "default": 2
+                        },
+                        "types": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Filtrar por tipos de entidade (ex: ['ORG', 'TECH'])",
+                            "default": ["ORG", "TECH", "PERSON", "PROJECT"]
+                        }
+                    },
+                    "required": ["entity"]
+                }
             )
         ]
 
@@ -377,6 +408,8 @@ class CerebroMCP:
                 result = self._gc(arguments)
             elif name == "cerebro_capture_memory":
                 result = self._capture_memory(arguments)
+            elif name == "cerebro_graph":
+                result = self._cerebro_graph(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -716,6 +749,86 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             dry_run=dry_run
         )
         return gc.generate_gc_report(results)
+
+    def _cerebro_graph(self, args: Dict[str, Any]) -> str:
+        """Explora grafo de entidades"""
+        entity = args.get("entity")
+        if not entity:
+            return "Erro: 'entity' é obrigatório para cerebro_graph"
+
+        depth = args.get("depth", 2)
+        entity_types = args.get("types", ["ORG", "TECH", "PERSON", "PROJECT"])
+
+        # Limita profundidade máxima para evitar traversal muito grande
+        depth = min(depth, 3)
+
+        nodes, edges = self.entities_db.traverse(
+            start_entity=entity,
+            depth=depth,
+            entity_types=entity_types,
+            max_nodes=50
+        )
+
+        if not nodes:
+            return f"Nenhuma entidade encontrada para '{entity}'"
+
+        # Formata grafo como árvore
+        return self._format_graph(nodes, edges, entity)
+
+    def _format_graph(
+        self,
+        nodes: List[Dict[str, Any]],
+        edges: List[Dict[str, Any]],
+        root_entity: str
+    ) -> str:
+        """Formata grafo como árvore visual"""
+        lines = [f"## Grafo de '{root_entity}'\n"]
+        lines.append(f"**{len(nodes)}** entidades encontradas, **{len(edges)}** conexões\n")
+
+        # Constroi adjacency list
+        adj: Dict[str, List[Dict[str, Any]]] = {}
+        for edge in edges:
+            source = edge["source"].lower()
+            if source not in adj:
+                adj[source] = []
+            adj[source].append(edge)
+
+        # BFS para imprimir árvore
+        visited = set()
+        queue = [(root_entity.lower(), 0)]
+
+        while queue:
+            entity_name, depth = queue.pop(0)
+
+            if entity_name in visited:
+                continue
+            visited.add(entity_name)
+
+            # Encontra nó correspondente
+            node = next((n for n in nodes if n["name"].lower() == entity_name), None)
+            if not node:
+                continue
+
+            # Imprime nó
+            prefix = "  " * depth
+            connector = "├─ " if depth > 0 else ""
+            lines.append(f"{prefix}{connector}{node['name']} ({node['type']})")
+
+            # Adiciona filhos na fila
+            if depth < 3:
+                children = adj.get(entity_name, [])
+                for child in children:
+                    child_name = child["target"].lower()
+                    if child_name not in visited:
+                        queue.append((child_name, depth + 1))
+
+        # Lista todas as arestas
+        if edges:
+            lines.append("\n## Conexões")
+            for edge in edges:
+                lines.append(f"- {edge['source']} → {edge['target']} ({edge['type']})")
+
+        return "\n".join(lines)
 
 
 async def main():
