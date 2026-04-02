@@ -224,6 +224,50 @@ Mostre o que será arquivado antes de confirmar.
 """, encoding="utf-8")
             print(f"[OK] Slash command criado: {gc_cmd}")
 
+        search_cmd = commands_dir / "cerebro-search.md"
+        if not search_cmd.exists():
+            search_cmd.write_text("""---
+description: Buscar nas memórias do projeto por termo ou assunto
+---
+Use a ferramenta cerebro_search com query="$ARGUMENTS".
+Mostre os resultados formatados com tipo, título e score de relevância.
+Se $ARGUMENTS estiver vazio, pergunte ao usuário o que deseja buscar.
+""", encoding="utf-8")
+            print(f"[OK] Slash command criado: {search_cmd}")
+
+        memory_cmd = commands_dir / "cerebro-memory.md"
+        if not memory_cmd.exists():
+            memory_cmd.write_text("""---
+description: Ver memórias ativas do projeto atual (MEMORY.md)
+---
+Use a ferramenta cerebro_memory com project="$ARGUMENTS".
+Se $ARGUMENTS estiver vazio, tente detectar o nome do projeto pelo diretório atual.
+Mostre o conteúdo completo do MEMORY.md formatado.
+""", encoding="utf-8")
+            print(f"[OK] Slash command criado: {memory_cmd}")
+
+        diff_cmd = commands_dir / "cerebro-diff.md"
+        if not diff_cmd.exists():
+            diff_cmd.write_text("""---
+description: Ver o que mudou nas memórias nos últimos 7 dias
+---
+Use a ferramenta cerebro_diff com project="$ARGUMENTS" e period_days=7.
+Se $ARGUMENTS estiver vazio, tente detectar o nome do projeto pelo diretório atual.
+Mostre o relatório completo de memórias adicionadas, atualizadas e em risco de GC.
+""", encoding="utf-8")
+            print(f"[OK] Slash command criado: {diff_cmd}")
+
+        remember_cmd = commands_dir / "cerebro-remember.md"
+        if not remember_cmd.exists():
+            remember_cmd.write_text("""---
+description: Revisar memórias e remover duplicatas ou conflitos
+---
+Use a ferramenta cerebro_remember com dry_run=true primeiro.
+Mostre o relatório completo. Pergunte ao usuário se deseja aplicar as mudanças.
+Se confirmar, chame novamente com dry_run=false.
+""", encoding="utf-8")
+            print(f"[OK] Slash command criado: {remember_cmd}")
+
     # Slash commands globais em ~/.claude/commands/
     if global_commands:
         global_commands_dir = Path.home() / ".claude" / "commands"
@@ -258,6 +302,50 @@ Execute: ocerebro gc --threshold 30
 Mostre o que será arquivado antes de confirmar.
 """, encoding="utf-8")
             print(f"[OK] Slash command global criado: {gc_global}")
+
+        search_global = global_commands_dir / "cerebro-search.md"
+        if not search_global.exists():
+            search_global.write_text("""---
+description: Buscar nas memórias por termo ou assunto (global)
+---
+Use a ferramenta cerebro_search com query="$ARGUMENTS".
+Mostre os resultados formatados com tipo, título e score de relevância.
+Se $ARGUMENTS estiver vazio, pergunte ao usuário o que deseja buscar.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {search_global}")
+
+        memory_global = global_commands_dir / "cerebro-memory.md"
+        if not memory_global.exists():
+            memory_global.write_text("""---
+description: Ver memórias ativas do projeto (global)
+---
+Use a ferramenta cerebro_memory com project="$ARGUMENTS".
+Se $ARGUMENTS estiver vazio, tente detectar o nome do projeto pelo diretório atual.
+Mostre o conteúdo completo do MEMORY.md formatado.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {memory_global}")
+
+        diff_global = global_commands_dir / "cerebro-diff.md"
+        if not diff_global.exists():
+            diff_global.write_text("""---
+description: Ver o que mudou nas memórias nos últimos 7 dias (global)
+---
+Use a ferramenta cerebro_diff com project="$ARGUMENTS" e period_days=7.
+Se $ARGUMENTS estiver vazio, tente detectar o nome do projeto pelo diretório atual.
+Mostre o relatório completo de memórias adicionadas, atualizadas e em risco de GC.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {diff_global}")
+
+        remember_global = global_commands_dir / "cerebro-remember.md"
+        if not remember_global.exists():
+            remember_global.write_text("""---
+description: Revisar memórias e remover duplicatas ou conflitos (global)
+---
+Use a ferramenta cerebro_remember com dry_run=true primeiro.
+Mostre o relatório completo. Pergunte ao usuário se deseja aplicar as mudanças.
+Se confirmar, chame novamente com dry_run=false.
+""", encoding="utf-8")
+            print(f"[OK] Slash command global criado: {remember_global}")
 
     return True
 
