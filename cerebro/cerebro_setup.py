@@ -153,7 +153,6 @@ def generate_mcp_config(ocerebro_path: Path) -> dict:
         mcp_config["args"] = [str(mcp_server)]
 
     # SECURITY: NÃO salvar API keys no config
-    # As variáveis de ambiente são herdadas automaticamente do shell
     mcp_config["env"] = {}
 
     return {
@@ -181,7 +180,6 @@ def merge_configs(existing: dict, new: dict) -> dict:
     if "mcpServers" not in result:
         result["mcpServers"] = {}
 
-    # Adiciona/Atualiza servidor ocerebro
     if "mcpServers" in new:
         for name, config in new["mcpServers"].items():
             result["mcpServers"][name] = config
@@ -195,7 +193,6 @@ def setup_slash_commands(project_path: Path) -> bool:
     commands_dir = project_path / ".claude" / "commands"
     commands_dir.mkdir(parents=True, exist_ok=True)
 
-    # cerebro-dream.md
     dream_cmd = commands_dir / "cerebro-dream.md"
     if not dream_cmd.exists():
         dream_cmd.write_text("""---
@@ -206,7 +203,6 @@ Mostre o relatório completo do que foi salvo.
 """, encoding="utf-8")
         print(f"[OK] Slash command criado: {dream_cmd}")
 
-    # cerebro-status.md
     status_cmd = commands_dir / "cerebro-status.md"
     if not status_cmd.exists():
         status_cmd.write_text("""---
@@ -217,7 +213,6 @@ Liste quantas memórias existem por tipo.
 """, encoding="utf-8")
         print(f"[OK] Slash command criado: {status_cmd}")
 
-    # cerebro-gc.md
     gc_cmd = commands_dir / "cerebro-gc.md"
     if not gc_cmd.exists():
         gc_cmd.write_text("""---
@@ -232,26 +227,15 @@ Mostre o que será arquivado antes de confirmar.
 
 
 def find_python_with_ocerebro() -> str:
-    """Encontra o executável Python onde ocerebro está instalado.
-
-    Prioridade:
-    1. sys.executable (Python atual)
-    2. python (PATH)
-    3. python3 (PATH)
-
-    Returns:
-        Caminho absoluto do Python ou None se não encontrado
-    """
+    """Encontra o executável Python onde ocerebro está instalado."""
     candidates = []
 
-    # Tenta sys.executable primeiro
     try:
         import ocerebro  # noqa: F401
         candidates.append(sys.executable)
     except ImportError:
         pass
 
-    # Tenta python e python3 no PATH
     for cmd in ["python", "python3"]:
         try:
             result = subprocess.run(
@@ -261,7 +245,6 @@ def find_python_with_ocerebro() -> str:
                 timeout=5
             )
             if result.returncode == 0:
-                # Resolve full path
                 result_path = subprocess.run(
                     [cmd, "-c", "import sys; print(sys.executable)"],
                     capture_output=True,
@@ -277,12 +260,10 @@ def find_python_with_ocerebro() -> str:
 
 def get_claude_code_settings_path() -> Path | None:
     """Encontra o settings.json do Claude Code."""
-    # Prioridade 1: ~/.claude/settings.json
     home_settings = Path.home() / ".claude" / "settings.json"
     if home_settings.exists():
         return home_settings
 
-    # Prioridade 2: %APPDATA%/Claude/settings.json (Windows)
     if sys.platform == "win32":
         appdata = os.environ.get("APPDATA", "")
         if appdata:
@@ -290,7 +271,6 @@ def get_claude_code_settings_path() -> Path | None:
             if appdata_settings.exists():
                 return appdata_settings
 
-    # Retorna home_settings mesmo se não existe (para criar)
     return home_settings
 
 
@@ -306,21 +286,12 @@ def get_claude_desktop_settings_path() -> Path | None:
 
 
 def setup_claude(auto: bool = True) -> bool:
-    """Configura MCP Server automaticamente.
-
-    Args:
-        auto: Se True, detecta automaticamente qual Claude usar.
-              Se False, pergunta ao usuário.
-
-    Returns:
-        True se configurado com sucesso
-    """
+    """Configura MCP Server automaticamente."""
     print("=" * 60)
     print("OCerebro - Configurando MCP Server")
     print("=" * 60)
     print()
 
-    # Encontra Python com ocerebro instalado
     python_cmd = find_python_with_ocerebro()
     print(f"[1/5] Python detectado: {python_cmd}")
 
@@ -339,23 +310,18 @@ def setup_claude(auto: bool = True) -> bool:
     configured = []
     errors = []
 
-    # Detecta qual Claude está instalado
     claude_code_path = get_claude_code_settings_path()
     claude_desktop_path = get_claude_desktop_settings_path()
 
     if auto:
-        # Modo automático: configura ambos que existirem
         targets = []
         if claude_code_path and claude_code_path.exists():
             targets.append(("code", claude_code_path))
         if claude_desktop_path and claude_desktop_path.exists():
             targets.append(("desktop", claude_desktop_path))
-
-        # Se nenhum existe, configura o default (Claude Code)
         if not targets:
             targets.append(("code", claude_code_path))
     else:
-        # Modo interativo
         print("Qual versão do Claude você usa?")
         print("  1. Claude Desktop")
         print("  2. Claude Code (claude.ai/code)")
@@ -370,7 +336,6 @@ def setup_claude(auto: bool = True) -> bool:
         if not targets:
             targets.append(("code", claude_code_path))
 
-    # Configura cada target
     for target_type, config_path in targets:
         print(f"[3/5] Configurando {target_type}...")
 
@@ -385,12 +350,10 @@ def setup_claude(auto: bool = True) -> bool:
                 except json.JSONDecodeError:
                     print(f"  Aviso: Config existente inválida, criando nova")
 
-            # Merge das configurações
             if "mcpServers" not in existing_config:
                 existing_config["mcpServers"] = {}
             existing_config["mcpServers"]["ocerebro"] = mcp_config
 
-            # Garante que MCP está habilitado
             if "mcp" not in existing_config:
                 existing_config["mcp"] = {}
             existing_config["mcp"]["enabled"] = True
@@ -407,7 +370,6 @@ def setup_claude(auto: bool = True) -> bool:
             errors.append(f"{target_type}: {e}")
             print(f"  [ERRO] {target_type}: {e}")
 
-    # Resumo
     print()
     print("=" * 60)
     print("SETUP CONCLUÍDO!")
@@ -452,18 +414,14 @@ def setup_hooks(project_path: Path | None = None) -> bool:
         return False
 
     example_config = """# OCerebro Hooks Configuration
-# Docs: https://github.com/OARANHA/ocerebro/blob/main/docs/HOOKS_GUIDE.md
-
 hooks:
-  # Exemplo: Notificação de erros críticos
   - name: error_notification
     event_type: error
     module_path: hooks/error_hook.py
     function: on_error
     config:
-      notify_severity: ["critical", "high"]
+      notify_severity: [\"critical\", \"high\"]
 
-  # Exemplo: Tracker de custo LLM
   - name: llm_cost_tracker
     event_type: tool_call
     event_subtype: llm
@@ -476,7 +434,6 @@ hooks:
 
     hooks_yaml.write_text(example_config, encoding="utf-8")
 
-    # Cria diretório hooks/ com __init__.py
     hooks_dir = project_path / "hooks"
     hooks_dir.mkdir(exist_ok=True)
     (hooks_dir / "__init__.py").write_text('"""Hooks customizados do projeto"""', encoding="utf-8")
@@ -488,15 +445,11 @@ hooks:
 
 
 def setup_ocerebro_dir(project_path: Path | None = None) -> bool:
-    """Cria diretório .ocerebro no projeto.
-
-    SECURITY: Valida path traversal - só permite paths dentro de home ou cwd.
-    """
+    """Cria diretório .ocerebro no projeto."""
 
     if project_path is None:
         project_path = Path.cwd()
 
-    # Validação de segurança: path deve ser dentro de home ou cwd
     project_path = project_path.resolve()
     home = Path.home().resolve()
     cwd = Path.cwd().resolve()
@@ -504,7 +457,6 @@ def setup_ocerebro_dir(project_path: Path | None = None) -> bool:
     if not (str(project_path).startswith(str(home)) or
             str(project_path).startswith(str(cwd))):
         print(f"❌ Erro: path '{project_path}' fora do diretório permitido.")
-        print(f"   Permitido: dentro de {home} ou {cwd}")
         return False
 
     ocerebro_dir = project_path / ".ocerebro"
@@ -513,27 +465,14 @@ def setup_ocerebro_dir(project_path: Path | None = None) -> bool:
         print(f"[OK] Diretório .ocerebro já existe")
         return True
 
-    # Cria estrutura
     (ocerebro_dir / "raw").mkdir(parents=True)
     (ocerebro_dir / "working").mkdir(parents=True)
     (ocerebro_dir / "official").mkdir(parents=True)
     (ocerebro_dir / "index").mkdir(parents=True)
     (ocerebro_dir / "config").mkdir(parents=True)
 
-    # Cria .gitignore dentro do .ocerebro
     gitignore = ocerebro_dir / ".gitignore"
-    gitignore.write_text("""# Raw events (muito grandes)
-raw/
-
-# Working drafts (opcional sincronizar)
-working/
-
-# Index databases (regenerado automaticamente)
-index/
-
-# Config local
-config/local.yaml
-""", encoding="utf-8")
+    gitignore.write_text("raw/\nworking/\nindex/\nconfig/local.yaml\n", encoding="utf-8")
 
     print(f"[OK] Diretório .ocerebro criado em {project_path}")
     print(f"   - raw/ (eventos brutos)")
@@ -552,7 +491,6 @@ def main():
         subcommand = sys.argv[1]
 
         if subcommand == "claude":
-            # Força reconfiguração do MCP
             success = setup_claude(auto=True)
             sys.exit(0 if success else 1)
 
@@ -566,7 +504,6 @@ def main():
             setup_ocerebro_dir(project)
             setup_hooks(project)
             setup_slash_commands(project)
-            # Auto-configura Claude
             setup_claude(auto=True)
             sys.exit(0)
 
@@ -574,10 +511,8 @@ def main():
             print(f"Subcomando desconhecido: {subcommand}")
             sys.exit(1)
 
-    # Setup completo padrão
     print("Executando setup completo...")
     print()
-
     setup_ocerebro_dir()
     setup_hooks()
     setup_claude(auto=True)
