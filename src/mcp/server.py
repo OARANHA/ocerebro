@@ -898,26 +898,50 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
     def _cerebro_dashboard(self, args: Dict[str, Any]) -> str:
         """Abre o dashboard visual do OCerebro no browser"""
         try:
-            from src.dashboard.server import DashboardServer
+            import subprocess
+            import sys
 
             port = args.get("port", 7999)
 
-            # Instancia servidor
-            dashboard_server = DashboardServer(
-                cerebro_path=self.cerebro_path,
-                metadata_db=self.metadata_db,
-                embeddings_db=self.embeddings_db,
-                entities_db=self.entities_db
-            )
+            # Verifica se já está rodando
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            is_running = result == 0
 
-            # Inicia se não estiver rodando
-            if not dashboard_server.is_running(port):
-                started = dashboard_server.start(port)
-                if not started:
-                    return "⚠️ Não foi possível iniciar o servidor do dashboard. Verifique se a porta está disponível."
+            if not is_running:
+                # Inicia como processo separado (persiste após o MCP terminar)
+                server_script = Path(__file__).parent.parent / "dashboard" / "standalone_server.py"
+                if not server_script.exists():
+                    return "⚠️ Erro: standalone_server.py não encontrado."
+
+                # Inicia processo em background
+                subprocess.Popen(
+                    [sys.executable, str(server_script), str(port)],
+                    cwd=str(Path(__file__).parent.parent.parent),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True  # Desacoplado do processo pai
+                )
+
+                # Aguarda servidor estar pronto (até 5s)
+                import time
+                for _ in range(50):
+                    time.sleep(0.1)
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('127.0.0.1', port))
+                    sock.close()
+                    if result == 0:
+                        break
+                else:
+                    return "⚠️ Servidor não iniciou em 5 segundos."
 
             # Abre browser
-            dashboard_server.open_browser(port)
+            import webbrowser
+            webbrowser.open(f"http://localhost:{port}")
 
             return f"✅ Dashboard aberto em http://localhost:{port}"
         except ImportError as e:
