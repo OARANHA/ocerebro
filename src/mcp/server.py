@@ -296,20 +296,16 @@ class CerebroMCP:
             ),
             Tool(
                 name="cerebro_capture_memory",
-                description="Captura memórias da conversa atual e salva nos arquivos - requer prompt do cerebro_dream",
+                description="Salva uma memória diretamente em ~/.claude/memory/ (formato nativo Claude Code). Chame uma vez por memória com o conteúdo Markdown completo.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "prompt": {
+                        "memory_content": {
                             "type": "string",
-                            "description": "Prompt de extração retornado por cerebro_dream"
-                        },
-                        "memory_dir": {
-                            "type": "string",
-                            "description": "Diretório de memória (opcional)"
+                            "description": "Conteúdo Markdown completo com frontmatter obrigatório: name, description, type (user|feedback|project|reference)"
                         }
                     },
-                    "required": ["prompt"]
+                    "required": ["memory_content"]
                 }
             ),
             Tool(
@@ -651,40 +647,53 @@ class CerebroMCP:
 {full_prompt}
 
 ---
-INSTRUÇÃO: Copie este prompt e use a ferramenta cerebro_capture_memory com:
-{{"prompt": "<cole o prompt acima>"}}
+INSTRUÇÃO CRÍTICA: Analise esta conversa usando o prompt acima.
+Para CADA memória identificada, chame cerebro_capture_memory UMA vez:
 
-Ou execute manualmente: ocerebro dream --since {since_days} --apply
+    cerebro_capture_memory(memory_content="---\\nname: <nome>\\ndescription: <descrição>\\ntype: <user|feedback|project|reference>\\n---\\n\\n<conteúdo>")
+
+NÃO use FileWrite. NÃO use FileEdit. APENAS cerebro_capture_memory.
+Uma chamada por memória. O sistema salva e indexa automaticamente.
 """
 
     def _capture_memory(self, args: Dict[str, Any]) -> str:
-        """Captura memórias usando o prompt fornecido.
+        """Salva uma memória no diretório nativo do Claude Code."""
+        import re
+        from datetime import datetime
+        from src.core.paths import get_memory_index
 
-        Esta ferramenta deve ser chamada após cerebro_dream retornar o prompt.
-        """
-        prompt = args.get("prompt")
-        if not prompt:
-            return "Erro: 'prompt' é obrigatório para cerebro_capture_memory"
+        content = args.get("memory_content", "")
+        if not content:
+            return "Erro: 'memory_content' é obrigatório"
 
-        memory_dir_str = args.get("memory_dir")
-        memory_dir = Path(memory_dir_str) if memory_dir_str else get_auto_mem_path()
+        name_match = re.search(r'name:\s*(.*)', content)
+        if not name_match:
+            return "Erro: frontmatter 'name' é obrigatório no memory_content"
 
-        # Instrui o Claude a usar o prompt para extrair memórias
-        return f"""Prompt de extração recebido.
+        mem_name = name_match.group(1).strip().lower().replace(' ', '-')
+        mem_dir = get_auto_mem_path()
+        mem_dir.mkdir(parents=True, exist_ok=True)
 
-Diretório de memória: {memory_dir}
+        file_path = mem_dir / f"{mem_name}.md"
+        file_path.write_text(content, encoding="utf-8")
 
-O Claude deve agora analisar a conversa usando este prompt e salvar as memórias
-nos arquivos .md apropriados em {memory_dir}
+        desc_match = re.search(r'description:\s*(.*)', content)
+        type_match = re.search(r'type:\s*(.*)', content)
+        desc = desc_match.group(1).strip() if desc_match else "sem descrição"
+        m_type = type_match.group(1).strip() if type_match else "project"
+        ts = datetime.now().strftime("%Y-%m-%d")
+        entry = f"- [{m_type}] {mem_name}.md ({ts}): {desc}\n"
 
-Formato esperado:
-- user_*.md para memórias sobre o usuário
-- feedback_*.md para feedbacks e convenções
-- project_*.md para decisões e fatos do projeto
-- reference_*.md para ponteiros externos
+        index_path = get_memory_index(mem_dir)
+        if index_path.exists():
+            existing = index_path.read_text(encoding="utf-8")
+            if mem_name not in existing:
+                with open(index_path, "a", encoding="utf-8") as f:
+                    f.write(entry)
+        else:
+            index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
 
-Use FileWrite para criar os arquivos de memória.
-"""
+        return f"✅ Memória '{mem_name}' salva em {file_path}"
 
     def _remember(self, args: Dict[str, Any]) -> str:
         """Revisão e promoção de memórias"""
