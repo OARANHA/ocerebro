@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional
 import sqlite3
 import json
 from datetime import datetime
-from src.forgetting.gc import calculate_rfms_score
+from src.consolidation.scorer import Scorer, ScoringConfig
+
+# Instancia scorer para calculo de RFM risk
+_scorer = Scorer(ScoringConfig())
 
 
 def create_router(
@@ -247,9 +250,10 @@ def create_router(
 
             memories = []
             for row in rows:
-                # Calcula GC risk
+                # Calcula GC risk (1.0 - score RFM)
                 memory_dict = dict(row)
-                gc_risk = 1.0 - calculate_rfms_score(memory_dict)
+                rfms_score = _scorer.calculate(memory_dict)
+                gc_risk = 1.0 - rfms_score
 
                 memories.append({
                     "id": memory_dict["id"],
