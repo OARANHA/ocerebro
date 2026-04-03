@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from src.working.yaml_storage import YAMLStorage
 from src.official.markdown_storage import MarkdownStorage
 from src.official.templates import ErrorTemplate, DecisionTemplate
+from src.consolidation.scorer import Scorer, ScoringConfig
 
 
 @dataclass
@@ -52,6 +53,9 @@ class Promoter:
         self.official_storage = official_storage
         self.entities_db_path = entities_db_path
         self._entities_db = None
+
+        # Inicializa scorer RFM
+        self.scorer = Scorer(ScoringConfig())
 
     def promote_session(
         self,
@@ -178,6 +182,23 @@ class Promoter:
             frontmatter["events_from"] = draft["events_range"].get("from")
             frontmatter["events_to"] = draft["events_range"].get("to")
 
+        # Calcula scores RFM
+        scores = self.scorer.calculate_all_scores({
+            "type": "decision",
+            "last_accessed": datetime.now(timezone.utc),
+            "access_count": 0,
+            "status": "approved",
+            "severity": None,
+            "related_to": frontmatter.get("related_to", [])
+        })
+
+        # Adiciona scores ao frontmatter
+        frontmatter["importance_score"] = scores["importance_score"]
+        frontmatter["recency_score"] = scores["recency_score"]
+        frontmatter["frequency_score"] = scores["frequency_score"]
+        frontmatter["links_score"] = scores["links_score"]
+        frontmatter["total_score"] = scores["total_score"]
+
         # Gera corpo
         body_sections = [
             "## Resumo",
@@ -285,6 +306,22 @@ class Promoter:
             project=project,
             tags=["auto-promoted"]
         )
+
+        # Calcula scores RFM
+        scores = self.scorer.calculate_all_scores({
+            "type": "error",
+            "last_accessed": datetime.now(timezone.utc),
+            "access_count": 0,
+            "severity": error.get("severity", "high"),
+            "related_to": frontmatter.get("related_to", [])
+        })
+
+        # Adiciona scores ao frontmatter
+        frontmatter["importance_score"] = scores["importance_score"]
+        frontmatter["recency_score"] = scores["recency_score"]
+        frontmatter["frequency_score"] = scores["frequency_score"]
+        frontmatter["links_score"] = scores["links_score"]
+        frontmatter["total_score"] = scores["total_score"]
 
         # Gera corpo
         error_original = str(error.get("context", {}))[:500]

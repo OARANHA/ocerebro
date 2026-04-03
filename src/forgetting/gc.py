@@ -22,14 +22,16 @@ class GarbageCollector:
     baseado em policies de forgetting.
     """
 
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path: Path, metadata_db: Optional[Any] = None):
         """
         Inicializa o GarbageCollector.
 
         Args:
             config_path: Path para configuração
+            metadata_db: Instância opcional do MetadataDB para consultar scores
         """
         self.config_path = config_path
+        self.metadata_db = metadata_db
 
     def find_candidates_for_archive(
         self,
@@ -71,6 +73,14 @@ class GarbageCollector:
                     # Nunca arquiva memórias de tipo 'user' ou 'feedback'
                     if mem_type in ['user', 'feedback']:
                         continue
+
+                    # Tarefa 2: Verifica total_score se metadata_db estiver disponível
+                    if self.metadata_db:
+                        mem_id = frontmatter.get("name", file_path.stem)
+                        memory_data = self.metadata_db.get_by_id(mem_id)
+                        if memory_data and memory_data.get("total_score", 0) >= 0.5:
+                            # Memória com alto score não é candidata
+                            continue
 
                     candidates.append({
                         "file_path": str(file_path),
