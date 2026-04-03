@@ -564,26 +564,64 @@ class CerebroMCP:
             return f"Promoção falhou: {result.metadata.get('reason', 'desconhecido')}"
 
     def _status(self) -> str:
-        """Status do sistema"""
+        """Status do sistema com contagem de memórias por tipo"""
         session_id = self.session_manager.get_session_id()
 
         lines = [
-            "Status do Cerebro:",
-            f"  Session ID: {session_id}",
-            f"  Path: {self.cerebro_path.absolute()}",
+            "╔══════════════════════════════════════════════════════════════╗",
+            "║                    🧠 OCEREBRO STATUS                        ║",
+            "╚══════════════════════════════════════════════════════════════╝",
             "",
-            "Storages:",
-            f"  Raw: {self.cerebro_path / 'raw'}",
-            f"  Working: {self.cerebro_path / 'working'}",
-            f"  Official: {self.cerebro_path / 'official'}",
+            f"Session ID: {session_id}",
+            f"Path: {self.cerebro_path.absolute()}",
             "",
-            "Índice:",
-            f"  Metadata DB: {self.cerebro_path / 'index' / 'metadata.db'}",
-            f"  Embeddings DB: {self.cerebro_path / 'index' / 'embeddings.db'}",
-            f"  Entities DB: {self.cerebro_path / 'index' / 'entities.db'}"
         ]
 
+        # Contagem de memórias por tipo (entities DB)
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(self.cerebro_path / "index" / "entities.db"))
+            cursor = conn.cursor()
+            cursor.execute("SELECT entity_type, COUNT(*) FROM entities GROUP BY entity_type ORDER BY COUNT(*) DESC")
+            type_counts = cursor.fetchall()
+            conn.close()
+
+            if type_counts:
+                total = sum(c for _, c in type_counts)
+                lines.append(f"📊 Memórias: {total} total")
+                lines.append("")
+                lines.append("Por tipo:")
+                for entity_type, count in type_counts:
+                    icon = self._get_type_icon(entity_type)
+                    lines.append(f"  {icon} {entity_type}: {count}")
+            else:
+                lines.append("📊 Memórias: 0")
+        except Exception:
+            lines.append("📊 Memórias: (banco não acessível)")
+
+        lines.append("")
+        lines.append("Storages:")
+        lines.append(f"  📁 Raw: {self.cerebro_path / 'raw'}")
+        lines.append(f"  📝 Working: {self.cerebro_path / 'working'}")
+        lines.append(f"  📋 Official: {self.cerebro_path / 'official'}")
+
         return "\n".join(lines)
+
+    def _get_type_icon(self, entity_type: str) -> str:
+        """Retorna ícone para tipo de memória"""
+        icons = {
+            "USER": "👤",
+            "FEEDBACK": "💬",
+            "PROJECT": "📂",
+            "REFERENCE": "🔗",
+            "TAG": "🏷️",
+            "TYPE": "📌",
+            "META": "⚙️",
+            "DECISION": "✅",
+            "ERROR": "❌",
+            "DRAFT": "📝",
+        }
+        return icons.get(entity_type, "📄")
 
     def _hooks(self, args: Dict[str, Any]) -> str:
         """Lista e gerencia hooks customizados"""
