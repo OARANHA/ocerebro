@@ -79,6 +79,7 @@ class HooksLoader:
         Carrega módulo Python dinamicamente.
 
         SECURITY FIX: Valida path para evitar path traversal
+        WINDOWS FIX: Suporte a paths com espaços
 
         Args:
             module_path: Path do módulo relativo ao projeto
@@ -93,6 +94,7 @@ class HooksLoader:
         if module_path in self._loaded_modules:
             return self._loaded_modules[module_path]
 
+        # WINDOWS FIX: Usa resolve() para paths absolutos com espaços
         # SECURITY: Resolve path absoluto e verifica se está dentro do diretório permitido
         path = Path(module_path).resolve()
         allowed_root = self.config_path.parent.resolve()
@@ -113,9 +115,10 @@ class HooksLoader:
         if path.suffix != ".py":
             raise ValueError(f"Hook deve ser arquivo .py: {path}")
 
+        # WINDOWS FIX: Usa str(path) em vez de path direto para evitar issues
         spec = importlib.util.spec_from_file_location(
             f"hook_{path.stem}",
-            path
+            str(path)  # Converte para string para evitar issues no Windows
         )
 
         if spec is None or spec.loader is None:

@@ -17,6 +17,12 @@ cerebro/config.yaml
 .ocerebro_config
 *.json.bak
 
+# Reports gerados
+diff_report.md
+dream_report.md
+remember_report.md
+gc_report.md
+
 # Python
 __pycache__/
 *.py[cod]

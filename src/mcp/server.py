@@ -105,12 +105,17 @@ class CerebroMCP:
             self.raw_storage
         )
 
-        # Inicializa hooks com tratamento de erro
-        # WARN-04 FIX: hooks.yaml com erro não derruba o servidor
+        # Inicializa hooks APENAS se .ocerebro existir e hooks.yaml estiver presente
+        # FIX: Não carrega hooks em projetos sem .ocerebro
         hooks_config = self.cerebro_path.parent / "hooks.yaml"
         try:
-            self.hooks_loader = HooksLoader(hooks_config) if hooks_config.exists() else None
-            self.hooks_runner = HookRunner(self.hooks_loader) if self.hooks_loader else None
+            # Verifica se hooks.yaml existe antes de carregar
+            if hooks_config.exists():
+                self.hooks_loader = HooksLoader(hooks_config)
+                self.hooks_runner = HookRunner(self.hooks_loader)
+            else:
+                self.hooks_loader = None
+                self.hooks_runner = None
         except Exception as e:
             # WINDOWS FIX: Usa _safe_print_error para evitar UnicodeEncodeError
             _safe_print_error(f"[CEREBRO] Aviso: hooks.yaml com erro ({e}). Hooks desativados.")

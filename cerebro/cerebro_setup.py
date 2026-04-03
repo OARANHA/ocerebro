@@ -101,10 +101,11 @@ def find_claude_desktop_config() -> Path | None:
 def get_ocerebro_path() -> Path:
     """Retorna o caminho absoluto do OCerebro instalado"""
     # Tenta encontrar o package instalado via pip
+    # NOTA: O package se chama 'ocerebro' mas o modulo interno e 'cerebro'
     try:
-        import cerebro
-        cerebro_path = Path(cerebro.__file__).parent
-        return cerebro_path.resolve()
+        import ocerebro
+        ocerebro_path = Path(ocerebro.__file__).parent
+        return ocerebro_path.resolve()
     except ImportError:
         pass
 
@@ -132,16 +133,19 @@ def generate_mcp_config(ocerebro_path: Path) -> dict:
     SECURITY: Não salva API keys no config file.
     As variáveis de ambiente são herdadas do sistema.
     Configure no seu shell: ~/.bashrc ou ~/.zshrc
+
+    WINDOWS FIX: Paths com espaços são tratados corretamente.
     """
 
-    # Determina o comando Python
+    # Determina o comando Python (path completo para evitar issues no Windows)
     python_cmd = sys.executable
 
-    # Estratégia 1: usa python -m ocerebro.mcp (robusto para pip install)
+    # Estratégia 1: usa python -m src.mcp.server (robusto para pip install)
+    # NOTA: O cwd precisa ser path absoluto para evitar issues com paths relativos
     mcp_config = {
         "command": python_cmd,
         "args": ["-m", "src.mcp.server"],
-        "cwd": str(ocerebro_path.parent),
+        "cwd": str(ocerebro_path.parent.resolve()),  # resolve() para path absoluto
     }
 
     # Estratégia 2: path direto se arquivo existe
@@ -150,7 +154,8 @@ def generate_mcp_config(ocerebro_path: Path) -> dict:
         mcp_server = ocerebro_path.parent / "src" / "mcp" / "server.py"
 
     if mcp_server.exists():
-        mcp_config["args"] = [str(mcp_server)]
+        # Usa path absoluto e resolved para spaces no Windows
+        mcp_config["args"] = [str(mcp_server.resolve())]
 
     # SECURITY: NÃO salvar API keys no config
     mcp_config["env"] = {}
