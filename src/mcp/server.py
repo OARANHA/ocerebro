@@ -932,75 +932,57 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
 
             port = args.get("port", 7999)
 
-            # Verifica se já está rodando
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
-            is_running = result == 0
-
-            if is_running:
-                # Verifica se o servidor está usando o cerebro_path correto
+            # SEMPRE mata o processo antigo e reinicia - garante cerebro_path correto
+            pid_file = Path.home() / ".ocerebro_dashboard.pid"
+            if pid_file.exists():
                 try:
-                    import urllib.request
-                    import json as _json
-                    with urllib.request.urlopen(
-                        f"http://127.0.0.1:{port}/api/ping", timeout=2
-                    ) as resp:
-                        data = _json.loads(resp.read().decode())
-                        running_path = data.get("cerebro_path", "")
-                        current_path = str(self.cerebro_path.absolute())
-
-                        if running_path != current_path:
-                            # Path diferente - precisa reiniciar o servidor
-                            # Lê o PID e mata o processo antigo
-                            pid_file = Path.home() / ".ocerebro_dashboard.pid"
-                            if pid_file.exists():
-                                try:
-                                    old_pid = int(pid_file.read_text(encoding="utf-8").strip())
-                                    import os
-                                    # WINDOWS FIX: usa taskkill no Windows
-                                    if sys.platform == "win32":
-                                        import subprocess
-                                        subprocess.call(["taskkill", "/F", "/PID", str(old_pid)])
-                                    else:
-                                        os.kill(old_pid, 9)  # SIGKILL
-                                    pid_file.unlink()  # Remove o arquivo PID
-                                except Exception:
-                                    pass  # Processo já morreu ou erro ao matar
-
-                            # Agora is_running será False e vamos reiniciar abaixo
-                            is_running = False
+                    old_pid = int(pid_file.read_text(encoding="utf-8").strip())
+                    import os
+                    # WINDOWS FIX: usa taskkill no Windows
+                    if sys.platform == "win32":
+                        subprocess.call(["taskkill", "/F", "/PID", str(old_pid)],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
+                        os.kill(old_pid, 9)  # SIGKILL
+                    pid_file.unlink()  # Remove o arquivo PID
                 except Exception:
-                    pass  # Se falhar o ping, tenta reiniciar mesmo assim
+                    pass  # Processo já morreu ou erro ao matar
 
-            if not is_running:
-                # Inicia como processo separado (persiste após o MCP terminar)
-                server_script = Path(__file__).parent.parent / "dashboard" / "standalone_server.py"
-                if not server_script.exists():
-                    return "⚠️ Erro: standalone_server.py não encontrado."
+            # Aguarda porta liberar (até 2s)
+            import time
+            for _ in range(20):
+                time.sleep(0.1)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                if result != 0:
+                    break
 
-                # Inicia processo em background
-                subprocess.Popen(
-                    [sys.executable, str(server_script), str(port), str(self.cerebro_path.absolute())],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True  # Desacoplado do processo pai
-                )
+            # Inicia como processo separado (persiste após o MCP terminar)
+            server_script = Path(__file__).parent.parent / "dashboard" / "standalone_server.py"
+            if not server_script.exists():
+                return "⚠️ Erro: standalone_server.py não encontrado."
 
-                # Aguarda servidor estar pronto (até 5s)
-                import time
-                for _ in range(50):
-                    time.sleep(0.1)
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(1)
-                    result = sock.connect_ex(('127.0.0.1', port))
-                    sock.close()
-                    if result == 0:
-                        break
-                else:
-                    return "⚠️ Servidor não iniciou em 5 segundos."
+            # Inicia processo em background
+            subprocess.Popen(
+                [sys.executable, str(server_script), str(port), str(self.cerebro_path.absolute())],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True  # Desacoplado do processo pai
+            )
+
+            # Aguarda servidor estar pronto (até 5s)
+            for _ in range(50):
+                time.sleep(0.1)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                if result == 0:
+                    break
+            else:
+                return "⚠️ Servidor não iniciou em 5 segundos."
 
             # Abre browser
             import webbrowser
