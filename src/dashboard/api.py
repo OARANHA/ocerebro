@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import sqlite3
 import json
 from datetime import datetime
+from src.forgetting.gc import calculate_rfms_score
 
 
 def create_router(
@@ -23,6 +24,11 @@ def create_router(
     router.embeddings_db = embeddings_db
     router.entities_db = entities_db
     router.cerebro_path = cerebro_path
+
+    @router.get("/ping")
+    async def get_ping():
+        """Retorna o cerebro_path atual do servidor"""
+        return {"cerebro_path": str(router.cerebro_path)}
 
     @router.get("/status")
     async def get_status():
@@ -242,7 +248,6 @@ def create_router(
             memories = []
             for row in rows:
                 # Calcula GC risk
-                from src.forgetting.gc import calculate_rfms_score
                 memory_dict = dict(row)
                 gc_risk = 1.0 - calculate_rfms_score(memory_dict)
 

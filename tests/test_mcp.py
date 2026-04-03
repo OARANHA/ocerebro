@@ -13,7 +13,7 @@ class TestCerebroMCP:
         mcp = CerebroMCP(tmp_cerebro_dir)
         tools = mcp.get_tools()
 
-        assert len(tools) == 10  # 7 originais + dream, remember, gc
+        assert len(tools) == 13  # 7 originais + dream, remember, gc, capture_memory, graph, dashboard
         tool_names = [t.name for t in tools]
         assert "cerebro_memory" in tool_names
         assert "cerebro_search" in tool_names
@@ -25,6 +25,9 @@ class TestCerebroMCP:
         assert "cerebro_dream" in tool_names
         assert "cerebro_remember" in tool_names
         assert "cerebro_gc" in tool_names
+        assert "cerebro_capture_memory" in tool_names
+        assert "cerebro_graph" in tool_names
+        assert "cerebro_dashboard" in tool_names
 
     def test_memory_tool(self, tmp_cerebro_dir):
         """Ferramenta cerebro_memory"""

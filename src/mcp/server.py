@@ -791,6 +791,22 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             except Exception:
                 pass  # Falha silenciosa se frontmatter inválido
 
+        # Indexar no metadata_db para aparecer no dashboard
+        if self.metadata_db:
+            tags_str = tags if isinstance(tags, str) else ",".join(tags) if isinstance(tags, list) else ""
+            self.metadata_db.insert({
+                "id": mem_name,
+                "type": m_type,
+                "project": project,
+                "title": frontmatter.get("title", mem_name) if frontmatter else mem_name,
+                "content": body_content,
+                "tags": tags_str,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "layer": "auto",
+                "path": str(file_path),
+            })
+
         return f"✅ Memória '{mem_name}' salva em {file_path}"
 
     def _remember(self, args: Dict[str, Any]) -> str:
@@ -900,6 +916,7 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
         try:
             import subprocess
             import sys
+            import requests
 
             port = args.get("port", 7999)
 
@@ -911,6 +928,33 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             sock.close()
             is_running = result == 0
 
+            if is_running:
+                # Verifica se o servidor está usando o cerebro_path correto
+                try:
+                    resp = requests.get(f"http://127.0.0.1:{port}/api/ping", timeout=2)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        running_path = data.get("cerebro_path", "")
+                        current_path = str(self.cerebro_path.absolute())
+
+                        if running_path != current_path:
+                            # Path diferente - precisa reiniciar o servidor
+                            # Lê o PID e mata o processo antigo
+                            pid_file = Path.home() / ".ocerebro_dashboard.pid"
+                            if pid_file.exists():
+                                try:
+                                    old_pid = int(pid_file.read_text(encoding="utf-8").strip())
+                                    import os
+                                    os.kill(old_pid, 9)  # SIGKILL
+                                    pid_file.unlink()  # Remove o arquivo PID
+                                except Exception:
+                                    pass  # Processo já morreu ou erro ao matar
+
+                            # Agora is_running será False e vamos reiniciar abaixo
+                            is_running = False
+                except Exception:
+                    pass  # Se falhar o ping, tenta reiniciar mesmo assim
+
             if not is_running:
                 # Inicia como processo separado (persiste após o MCP terminar)
                 server_script = Path(__file__).parent.parent / "dashboard" / "standalone_server.py"
@@ -919,8 +963,7 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
 
                 # Inicia processo em background
                 subprocess.Popen(
-                    [sys.executable, str(server_script), str(port)],
-                    cwd=str(Path(__file__).parent.parent.parent),
+                    [sys.executable, str(server_script), str(port), str(self.cerebro_path.absolute())],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True  # Desacoplado do processo pai
