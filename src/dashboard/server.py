@@ -5,6 +5,7 @@ import threading
 import webbrowser
 from pathlib import Path
 from typing import Any, Optional
+import importlib.resources
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,16 @@ class DashboardServer:
         self.embeddings_db = embeddings_db
         self.entities_db = entities_db
 
+        # Usa importlib.resources para encontrar static files corretamente
+        # Funciona tanto em desenvolvimento quanto em pacote instalado
+        try:
+            # Python 3.9+
+            static_path = importlib.resources.files("src.dashboard") / "static"
+            self._static_path = Path(str(static_path))
+        except AttributeError:
+            # Fallback para Python < 3.9
+            self._static_path = Path(__file__).parent / "static"
+
         self.app = self._create_app()
         self._server_thread: Optional[threading.Thread] = None
         self._port: Optional[int] = None
@@ -66,9 +77,8 @@ class DashboardServer:
         )
 
         # Monta static files
-        static_path = Path(__file__).parent / "static"
-        if static_path.exists():
-            app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+        if self._static_path.exists():
+            app.mount("/static", StaticFiles(directory=str(self._static_path)), name="static")
 
         # Monta API router
         from src.dashboard.api import create_router
@@ -84,10 +94,10 @@ class DashboardServer:
         @app.get("/")
         async def root():
             from fastapi.responses import FileResponse
-            index_path = static_path / "index.html"
+            index_path = self._static_path / "index.html"
             if index_path.exists():
                 return FileResponse(str(index_path))
-            return {"error": "index.html not found"}
+            return {"error": "index.html not found", "path": str(index_path)}
 
         return app
 

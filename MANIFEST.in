@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include package.json
+recursive-include src/dashboard/static *
+recursive-include cerebro *.py
+recursive-include hooks *.py
+recursive-include bin *

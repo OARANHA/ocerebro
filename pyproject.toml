@@ -72,6 +72,9 @@ ocerebro-setup = "cerebro.cerebro_setup:main"
 where = ["."]
 include = ["src*", "cerebro*"]
 
+[tool.setuptools.package-data]
+"src.dashboard" = ["static/*", "static/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
