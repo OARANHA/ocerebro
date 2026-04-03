@@ -834,7 +834,15 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             deletion_threshold_days=threshold_days * 4,
             dry_run=dry_run
         )
-        return gc.generate_gc_report(results)
+        report = gc.generate_gc_report(results)
+
+        # Adiciona aviso de arquivamento se houver memórias arquivadas
+        if results.get("archived"):
+            report += "\n\n---\n"
+            report += "⚠️ Memórias arquivadas não são deletadas — acesse em .ocerebro/arquivo/\n"
+            report += "Para restaurar: mova o arquivo de volta para ~/.claude/memory/\n"
+
+        return report
 
     def _cerebro_graph(self, args: Dict[str, Any]) -> str:
         """Explora grafo de entidades"""
@@ -936,9 +944,12 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             if is_running:
                 # Verifica se o servidor está usando o cerebro_path correto
                 try:
-                    resp = requests.get(f"http://127.0.0.1:{port}/api/ping", timeout=2)
-                    if resp.status_code == 200:
-                        data = resp.json()
+                    import urllib.request
+                    import json as _json
+                    with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/ping", timeout=2
+                    ) as resp:
+                        data = _json.loads(resp.read().decode())
                         running_path = data.get("cerebro_path", "")
                         current_path = str(self.cerebro_path.absolute())
 
@@ -950,7 +961,12 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
                                 try:
                                     old_pid = int(pid_file.read_text(encoding="utf-8").strip())
                                     import os
-                                    os.kill(old_pid, 9)  # SIGKILL
+                                    # WINDOWS FIX: usa taskkill no Windows
+                                    if sys.platform == "win32":
+                                        import subprocess
+                                        subprocess.call(["taskkill", "/F", "/PID", str(old_pid)])
+                                    else:
+                                        os.kill(old_pid, 9)  # SIGKILL
                                     pid_file.unlink()  # Remove o arquivo PID
                                 except Exception:
                                     pass  # Processo já morreu ou erro ao matar

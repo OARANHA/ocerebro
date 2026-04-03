@@ -19,6 +19,7 @@ cerebro/config.yaml
 
 # Reports gerados
 diff_report.md
+*.diff_report.md
 dream_report.md
 remember_report.md
 gc_report.md
