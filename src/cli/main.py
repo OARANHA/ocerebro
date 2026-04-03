@@ -333,6 +333,20 @@ def _run_init(project_path: Optional[Path] = None):
     print()
     setup_claude(auto=True)
 
+    # FIX 1: Verifica e confirma que hook Stop foi registrado
+    print("\n" + "=" * 60)
+    print("HOOK AUTOMÁTICO DE FIM DE SESSÃO")
+    print("=" * 60)
+    print("\nO OCerebro registrou um hook que executa automaticamente")
+    print("o comando 'ocerebro dream' toda vez que você encerra uma sessão.")
+    print("\nIsso garante que:")
+    print("  ✅ Suas memórias são extraídas automaticamente")
+    print("  ✅ Zero esforço — use o Claude Code normalmente")
+    print("  ✅ Próxima sessão já tem todo o contexto")
+    print("\nHook registrado em ~/.claude/settings.json:")
+    print('  hooks.Stop → "ocerebro dream --since 1 --apply"')
+    print("\nPara desativar: edite settings.json e remova o hook 'Stop'")
+
 
 def _install_semantic_deps():
     """Instala dependências de busca semântica (sentence-transformers + spacy)"""

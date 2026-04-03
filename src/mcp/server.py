@@ -439,12 +439,38 @@ class CerebroMCP:
             return [TextContent(type="text", text=f"Erro: {str(e)}")]
 
     def _memory(self, args: Dict[str, Any]) -> str:
-        """Gera memória ativa"""
+        """Gera memória ativa e escreve no diretório nativo do Claude Code para auto-load."""
         project = args.get("project")
         if not project:
             return "Erro: project é obrigatório"
 
-        return self.memory_view.generate(project)
+        content = self.memory_view.generate(project)
+
+        # FIX 4: Escreve MEMORY.md no diretório nativo do Claude Code
+        # Assim o Claude Code carrega automaticamente na próxima sessão
+        try:
+            from src.core.paths import get_auto_mem_path, get_memory_index
+            auto_mem_dir = get_auto_mem_path()
+            auto_mem_dir.mkdir(parents=True, exist_ok=True)
+            index_path = get_memory_index(auto_mem_dir)
+
+            # Gera conteúdo compatível com o formato que Claude Code espera
+            # Formato: # <title>\n\n- [type] filename (date): description
+            claude_format_lines = ["# OCerebro - Memória Ativa", ""]
+            claude_format_lines.append(f"## {project}")
+            claude_format_lines.append("")
+
+            # Parse do conteúdo gerado para extrair itens
+            for line in content.splitlines():
+                if line.startswith("- ["):
+                    claude_format_lines.append(line)
+
+            claude_content = "\n".join(claude_format_lines)
+            index_path.write_text(claude_content, encoding="utf-8")
+        except Exception:
+            pass  # Falha silenciosa - não bloqueia o retorno
+
+        return content
 
     def _search(self, args: Dict[str, Any]) -> str:
         """Busca memórias"""
@@ -712,11 +738,11 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
 """
 
     def _capture_memory(self, args: Dict[str, Any]) -> str:
-        """Salva uma memória no diretório nativo do Claude Code."""
+        """Salva uma memória no diretório nativo do Claude Code e no OCerebro (dual-write)."""
         import re
         import yaml
         from datetime import datetime
-        from src.core.paths import get_memory_index
+        from src.core.paths import get_memory_index, get_auto_mem_path
 
         content = args.get("memory_content", "")
         if not content:
@@ -727,11 +753,6 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             return "Erro: frontmatter 'name' é obrigatório no memory_content"
 
         mem_name = name_match.group(1).strip().lower().replace(' ', '-')
-        mem_dir = get_auto_mem_path()
-        mem_dir.mkdir(parents=True, exist_ok=True)
-
-        file_path = mem_dir / f"{mem_name}.md"
-        file_path.write_text(content, encoding="utf-8")
 
         # Parse frontmatter uma única vez com yaml.safe_load
         frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
@@ -767,18 +788,52 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
         ts = datetime.now().strftime("%Y-%m-%d")
         entry = f"- [{m_type}] {mem_name}.md ({ts}): {desc}\n"
 
-        index_path = get_memory_index(mem_dir)
-        if index_path.exists():
-            existing = index_path.read_text(encoding="utf-8")
+        # =========================================================================
+        # DUAL-WRITE: Salva em ambos os diretórios
+        # =========================================================================
+
+        # 1. Diretório nativo do Claude Code (~/.claude/projects/<slug>/memory/)
+        #    → Claude Code carrega automaticamente na próxima sessão
+        claude_mem_dir = get_auto_mem_path()
+        claude_mem_dir.mkdir(parents=True, exist_ok=True)
+        claude_file_path = claude_mem_dir / f"{mem_name}.md"
+        claude_file_path.write_text(content, encoding="utf-8")
+
+        # Atualiza MEMORY.md nativo
+        claude_index_path = get_memory_index(claude_mem_dir)
+        if claude_index_path.exists():
+            existing = claude_index_path.read_text(encoding="utf-8")
             if mem_name not in existing:
-                with open(index_path, "a", encoding="utf-8") as f:
+                with open(claude_index_path, "a", encoding="utf-8") as f:
                     f.write(entry)
         else:
-            index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
+            claude_index_path.write_text(f"# Memórias do Projeto\n\n{entry}", encoding="utf-8")
 
+        # 2. Diretório OCerebro (.ocerebro/official/<subdir>/)
+        #    → OCerebro indexa e busca via cerebro_memory/cerebro_search
+        # Mapeamento: Claude Code type → OCerebro subdir
+        type_to_subdir = {
+            "user": "decisions",      # user → decisions (global)
+            "feedback": "preferences", # feedback → preferences
+            "project": "decisions",    # project → decisions
+            "reference": "state",      # reference → state
+        }
+        subdir = type_to_subdir.get(m_type, "decisions")  # default: decisions
+
+        # Para tipo "user", salva em global/; para outros, usa project do frontmatter
+        if m_type == "user":
+            cerebro_project = "global"
+        else:
+            cerebro_project = project if project != "unknown" else "default"
+
+        cerebro_dir = self.cerebro_path / "official" / cerebro_project / subdir
+        cerebro_dir.mkdir(parents=True, exist_ok=True)
+        cerebro_file_path = cerebro_dir / f"{mem_name}.md"
+        cerebro_file_path.write_text(content, encoding="utf-8")
+
+        # =========================================================================
         # Registrar entidades no grafo (frontmatter + conteúdo)
-        # ORDEM IMPORTANTE: content primeiro, frontmatter depois
-        # extract_from_content() deleta apenas entidades 'content', preservando 'frontmatter'
+        # =========================================================================
         if self.entities_db and frontmatter_match:
             try:
                 # 1. Extrai entidades do conteúdo (spaCy NER)
@@ -791,7 +846,7 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
                 self.entities_db.extract_from_frontmatter(
                     memory_id=mem_name,
                     frontmatter=frontmatter,
-                    project=project
+                    project=cerebro_project
                 )
             except Exception:
                 pass  # Falha silenciosa se frontmatter inválido
@@ -802,17 +857,17 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             self.metadata_db.insert({
                 "id": mem_name,
                 "type": m_type,
-                "project": project,
+                "project": cerebro_project,
                 "title": frontmatter.get("title", mem_name) if frontmatter else mem_name,
                 "content": body_content,
                 "tags": tags_str,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "layer": "auto",
-                "path": str(file_path),
+                "path": str(cerebro_file_path),
             })
 
-        return f"✅ Memória '{mem_name}' salva em {file_path}"
+        return f"✅ Memória '{mem_name}' salva (dual-write: Claude + OCerebro)"
 
     def _remember(self, args: Dict[str, Any]) -> str:
         """Revisão e promoção de memórias"""

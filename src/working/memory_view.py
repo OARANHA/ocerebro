@@ -136,7 +136,7 @@ class MemoryView:
 
     def write_to_file(self, project: str) -> Path:
         """
-        Gera e escreve MEMORY.md no arquivo.
+        Gera e escreve MEMORY.md no arquivo (dual-write: OCerebro + Claude Code nativo).
 
         Args:
             project: Nome do projeto
@@ -145,6 +145,30 @@ class MemoryView:
             Path do arquivo MEMORY.md criado
         """
         content = self.generate(project)
+
+        # 1. Escreve em .ocerebro/MEMORY.md
         memory_file = self.cerebro_path / "MEMORY.md"
         memory_file.write_text(content, encoding="utf-8")
+
+        # 2. Escreve em ~/.claude/projects/<slug>/memory/MEMORY.md (Claude Code nativo)
+        try:
+            from src.core.paths import get_auto_mem_path, get_memory_index
+            auto_mem_dir = get_auto_mem_path()
+            auto_mem_dir.mkdir(parents=True, exist_ok=True)
+            index_path = get_memory_index(auto_mem_dir)
+
+            # Gera conteúdo compatível com formato Claude Code
+            claude_format_lines = ["# OCerebro - Memória Ativa", ""]
+            claude_format_lines.append(f"## {project}")
+            claude_format_lines.append("")
+
+            for line in content.splitlines():
+                if line.startswith("- ["):
+                    claude_format_lines.append(line)
+
+            claude_content = "\n".join(claude_format_lines)
+            index_path.write_text(claude_content, encoding="utf-8")
+        except Exception:
+            pass  # Falha silenciosa
+
         return memory_file

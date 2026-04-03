@@ -23,7 +23,7 @@ def sanitize_path(absolute_path: str) -> str:
 
     Exemplo:
         /home/user/projects/ocerebro → -home-user-projects-ocerebro
-        C:\\Users\\dev\\my-project → C--Users-dev-my-project
+        C:\\Users\\dev\\my-project → -c--users-dev-my-project
 
     Args:
         absolute_path: Path absoluto para sanitizar
@@ -31,26 +31,27 @@ def sanitize_path(absolute_path: str) -> str:
     Returns:
         String sanitizada para uso como nome de diretório
     """
+    import re
+
     # Normaliza separadores Windows para Unix
     normalized = absolute_path.replace("\\", "/")
 
-    # Substitui separadores de path por '-'
-    sanitized = re.sub(r'[/\\]', '-', normalized)
+    # Normaliza drive letter para lowercase (E:/ → e:/)
+    if len(normalized) >= 2 and normalized[1] == ":":
+        normalized = normalized[0].lower() + normalized[1:]
 
-    # Remove caracteres especiais (mantém apenas alfanuméricos, '-', '_')
+    # Substitui / e : por -
+    sanitized = re.sub(r'[/\\:]', '-', normalized)
+
+    # Remove caracteres especiais
     sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', sanitized)
 
     # Remove múltiplos '-' consecutivos
     sanitized = re.sub(r'-+', '-', sanitized)
 
-    # Garante que começa com '-' se o path original era absoluto
-    if absolute_path.startswith('/') or absolute_path.startswith('\\'):
-        if not sanitized.startswith('-'):
-            sanitized = '-' + sanitized
-    elif len(absolute_path) >= 2 and absolute_path[1] == ':':
-        # Windows path (ex: C:\)
-        if not sanitized.startswith('-'):
-            sanitized = '-' + sanitized
+    # Garante início com -
+    if not sanitized.startswith('-'):
+        sanitized = '-' + sanitized
 
     return sanitized
 
