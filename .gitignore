@@ -16,6 +16,7 @@ worktrees/
 cerebro/config.yaml
 .ocerebro_config
 *.json.bak
+*.tgz
 
 # Reports gerados
 diff_report.md
