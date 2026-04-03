@@ -1,5 +1,7 @@
 ---
 description: Ver status da memória do projeto
 ---
-Execute: ocerebro status
-Liste quantas memórias existem por tipo.
+
+Use a ferramenta cerebro_status (sem argumentos).
+Mostre o session ID, path do .ocerebro e quantidade de memórias por tipo.
+Não use Bash. Use APENAS a ferramenta MCP cerebro_status.
