@@ -108,6 +108,8 @@ class TestEmbeddingsDB:
             "texto sobre SQL": [0.9, 0.1, 0.0],
         }
 
+        # Setar flag semantic_available para True (mock)
+        db._semantic_available = True
         db._compute_embedding = lambda x: embeddings.get(x, [0.0, 0.0, 1.0])
 
         # Insere embeddings

@@ -32,6 +32,7 @@ class EmbeddingsDB:
         self.db_path = db_path
         self.model_name = model_name
         self._model = None
+        self._semantic_available = False
         # Cria diretório pai se não existir
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_sqlite_vec()
@@ -44,11 +45,10 @@ class EmbeddingsDB:
             try:
                 from sentence_transformers import SentenceTransformer
                 self._model = SentenceTransformer(self.model_name)
+                self._semantic_available = True
             except ImportError:
-                raise ImportError(
-                    "sentence-transformers não instalado. "
-                    "Instale com: pip install sentence-transformers"
-                )
+                self._semantic_available = False
+                return None
         return self._model
 
     def _init_sqlite_vec(self):
@@ -116,6 +116,8 @@ class EmbeddingsDB:
         Returns:
             Lista de floats (vetor de embedding)
         """
+        if self.model is None:
+            return []
         embedding = self.model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
 
@@ -271,6 +273,10 @@ class EmbeddingsDB:
         Returns:
             Lista de memórias similares com score
         """
+        # Retorna vazio se busca semântica não estiver disponível
+        if not self._semantic_available:
+            return []
+
         # Computa embedding da query
         query_embedding = self._compute_embedding(query)
 
@@ -419,3 +425,12 @@ class EmbeddingsDB:
             "model_name": self.model_name,
             "sqlite_vec_available": self._sqlite_vec_available
         }
+
+    def is_semantic_available(self) -> bool:
+        """
+        Verifica se busca semântica está disponível.
+
+        Returns:
+            True se sentence-transformers está instalado, False caso contrário
+        """
+        return self._semantic_available

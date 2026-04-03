@@ -109,18 +109,31 @@ class CerebroCLI:
         limit: int = 10,
         use_semantic: bool = True
     ) -> str:
+        # Verifica disponibilidade da busca semântica
+        semantic_available = self.query_engine.is_semantic_available()
+
+        if use_semantic and not semantic_available:
+            # Fallback para FTS + Graph apenas
+            lines = [
+                "⚠️  Busca semântica não disponível (sentence-transformers não instalado).",
+                "   Instalando com: npx ocerebro full",
+                ""
+            ]
+        else:
+            lines = []
+
         results = self.query_engine.search(
             query=query,
             project=project,
             mem_type=mem_type,
             limit=limit,
-            use_semantic=use_semantic
+            use_semantic=use_semantic and semantic_available
         )
 
         if not results:
             return "Nenhum resultado encontrado."
 
-        lines = [f"Resultados para '{query}':\n"]
+        lines.append(f"Resultados para '{query}':\n")
         for i, r in enumerate(results, 1):
             lines.append(f"{i}. [{r.type}] {r.title}")
             lines.append(f"   Projeto: {r.project} | Score: {r.score:.3f} | Fonte: {r.source}")
@@ -271,27 +284,106 @@ def _run_init(project_path: Optional[Path] = None):
     print("Como quer usar o OCerebro?")
     print("  1. Neste projeto (cria .ocerebro/ aqui)")
     print("  2. Global (usa ~/.ocerebro/ para todos os projetos)")
-    choice = input("\nEscolha [1/2] (padrão: 1): ").strip() or "1"
+    choice = input("\nEscolha [1/2] (padrao: 1): ").strip() or "1"
 
     if choice == "2":
         base_path = Path.home() / ".ocerebro"
-        print(f"\n✓ Modo global: {base_path}")
+        print(f"\n[OK] Modo global: {base_path}")
     else:
         base_path = (project_path or Path.cwd()) / ".ocerebro"
-        print(f"\n✓ Modo projeto: {base_path}")
+        print(f"\n[OK] Modo projeto: {base_path}")
 
     config_file = Path.home() / ".ocerebro_config"
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(f"base_path={base_path}\n", encoding="utf-8")
-    print(f"✓ Configuração salva em {config_file}")
+    print(f"[OK] Configuracao salva em {config_file}")
 
     setup_ocerebro_dir(base_path)
     setup_hooks(base_path)
     setup_slash_commands(project_path or Path.cwd())
 
+    # Pergunta sobre busca semantica
+    print("\n" + "="*60)
+    print("BUSCA SEMANTICA (opcional)")
+    print("="*60)
+    print("O OCerebro oferece dois modos de busca:")
+    print("  1. FTS + Graph (padrao) - Leve, rapido, sem dependencias extras")
+    print("     - Full-text search (FTS) no conteudo")
+    print("     - Busca por grafo de entidades")
+    print("     - ~100MB de footprint")
+    print("")
+    print("  2. FTS + Graph + Semantica (recomendado para producao)")
+    print("     - Tudo acima + busca por significado")
+    print("     - Encontra 'banco travando' mesmo sem palavra 'deadlock'")
+    print("     - ~500MB adicionais de dependencias")
+    print("")
+    semantic_choice = input("Instalar busca semantica agora? [y/N] (padrao: N): ").strip().lower()
+
+    if semantic_choice == "y":
+        _install_semantic_deps()
+    else:
+        print("\n[OK] Semantica nao instalada. Use FTS + Graph apenas.")
+        print("  Para instalar depois: npx ocerebro full")
+
     # Auto-configura Claude
     print()
     setup_claude(auto=True)
+
+
+def _install_semantic_deps():
+    """Instala dependências de busca semântica (sentence-transformers + spacy)"""
+    import subprocess
+
+    print("\n📦 Instalando dependências de busca semântica...")
+    print("   Isso pode levar alguns minutos (~500MB de downloads)")
+    print("")
+
+    pkgs = [
+        "sentence-transformers>=2.2.0",
+        "spacy>=3.5.0"
+    ]
+
+    # Usa o mesmo Python do ambiente atual
+    python = sys.executable
+
+    try:
+        for pkg in pkgs:
+            print(f"   Instalando {pkg}...")
+            subprocess.check_call([
+                python, "-m", "pip", "install", pkg, "-q"
+            ])
+            print(f"   ✓ {pkg} instalado")
+
+        # Pergunta qual modelo de linguagem baixar
+        print("\n   Qual modelo de linguagem deseja instalar?")
+        print("   1. português (pt_core_news_sm) ~50MB")
+        print("   2. inglês (en_core_web_sm) ~15MB")
+        print("   3. ambos")
+        lang_choice = input("\n   Escolha [1/2/3] (padrão: 1): ").strip() or "1"
+
+        if lang_choice in ["1", "3"]:
+            print("   Baixando modelo português (pt_core_news_sm)...")
+            subprocess.check_call([
+                python, "-m", "spacy", "download", "pt_core_news_sm", "-q"
+            ])
+            print("   ✓ pt_core_news_sm baixado")
+
+        if lang_choice in ["2", "3"]:
+            print("   Baixando modelo inglês (en_core_web_sm)...")
+            subprocess.check_call([
+                python, "-m", "spacy", "download", "en_core_web_sm", "-q"
+            ])
+            print("   ✓ en_core_web_sm baixado")
+
+        print("\n✅ Dependências instaladas com sucesso!")
+        print("   A busca semântica agora está disponível.")
+        print("\n   Para usar: npx ocerebro search \"sua query\"")
+
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ Erro ao instalar dependências: {e}")
+        print("   Tente manualmente: pip install sentence-transformers spacy")
+        print("   E depois: python -m spacy download pt_core_news_sm")
+        sys.exit(1)
 
 
 def main():
@@ -374,6 +466,9 @@ def main():
     gc_parser.add_argument("--threshold", type=int, default=7, dest="threshold_days")
     gc_parser.add_argument("--apply", action="store_true", dest="apply")
 
+    # Comando: full (instala dependências semânticas)
+    subparsers.add_parser("full", help="Instalar dependências de busca semântica")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -441,6 +536,9 @@ def main():
         result = cli.remember(dry_run=not args.apply)
     elif args.command == "gc":
         result = cli.gc_cmd(threshold_days=args.threshold_days, dry_run=not args.apply)
+    elif args.command == "full":
+        _install_semantic_deps()
+        sys.exit(0)
     else:
         parser.print_help()
         sys.exit(1)

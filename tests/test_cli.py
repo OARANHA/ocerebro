@@ -1,6 +1,7 @@
 """Testes para CLI do Cerebro"""
 
 import pytest
+import importlib
 from pathlib import Path
 from src.cli.main import CerebroCLI
 from src.core.event_schema import Event, EventType, EventOrigin
@@ -156,3 +157,64 @@ class TestCerebroCLI:
         ]
 
         assert len(promotion_events) >= 1
+
+
+class TestSemanticFallback:
+    """Testes para fallback semântico"""
+
+    def test_is_semantic_available_method(self, tmp_cerebro_dir):
+        """Verifica se método is_semantic_available existe e retorna bool"""
+        cli = CerebroCLI(tmp_cerebro_dir)
+
+        result = cli.query_engine.is_semantic_available()
+        assert isinstance(result, bool)
+
+    def test_search_with_semantic_unavailable(self, tmp_cerebro_dir):
+        """Busca deve funcionar mesmo com semântica indisponível"""
+        cli = CerebroCLI(tmp_cerebro_dir)
+
+        # Insert uma memória para testar FTS
+        cli.metadata_db.insert({
+            "id": "mem_test",
+            "type": "decision",
+            "project": "test",
+            "title": "Decisão sobre banco de dados",
+            "content": "PostgreSQL vs MongoDB",
+            "tags": "database,sql"
+        })
+
+        # Busca deve retornar resultados via FTS mesmo sem semântica
+        result = cli.search("banco de dados", use_semantic=True)
+
+        # Deve retornar resultados ou mensagem de fallback
+        assert "Resultado" in result or "semântica" in result.lower()
+
+    def test_search_semantic_available_message(self, tmp_cerebro_dir):
+        """Mensagem informativa quando semântica não disponível"""
+        cli = CerebroCLI(tmp_cerebro_dir)
+
+        # Simula semântica indisponível
+        cli.embeddings_db._semantic_available = False
+
+        result = cli.search("teste", use_semantic=True)
+
+        # Se semântica não disponível, deve mencionar fallback
+        if not cli.query_engine.is_semantic_available():
+            assert "sentence-transformers" in result or "Nenhum resultado" in result
+
+
+class TestQueryEngineSemanticCheck:
+    """Testes para QueryEngine.is_semantic_available"""
+
+    def test_query_engine_semantic_check(self, tmp_cerebro_dir):
+        """QueryEngine deve verificar disponibilidade semântica"""
+        from src.index.metadata_db import MetadataDB
+        from src.index.embeddings_db import EmbeddingsDB
+        from src.index.queries import QueryEngine
+
+        metadata_db = MetadataDB(tmp_cerebro_dir / "metadata.db")
+        embeddings_db = EmbeddingsDB(tmp_cerebro_dir / "embeddings.db")
+        engine = QueryEngine(metadata_db, embeddings_db)
+
+        result = engine.is_semantic_available()
+        assert isinstance(result, bool)

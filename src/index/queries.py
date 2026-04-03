@@ -204,7 +204,11 @@ class QueryEngine:
         Returns:
             Lista de resultados
         """
-        similar = self.embeddings_db.search_similar(query, project, limit * 2)
+        try:
+            similar = self.embeddings_db.search_similar(query, project, limit * 2)
+        except (ImportError, Exception):
+            # Busca semântica não disponível ou falhou
+            return []
 
         results = []
         for item in similar:
@@ -425,3 +429,12 @@ class QueryEngine:
         )
 
         return sorted_related[:limit]
+
+    def is_semantic_available(self) -> bool:
+        """
+        Verifica se busca semântica está disponível.
+
+        Returns:
+            True se sentence-transformers está instalado e operacional, False caso contrário
+        """
+        return self.embeddings_db.is_semantic_available()
