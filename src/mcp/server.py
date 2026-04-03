@@ -138,10 +138,9 @@ class CerebroMCP:
                     "properties": {
                         "project": {
                             "type": "string",
-                            "description": "Nome do projeto"
+                            "description": "Nome do projeto (omitir = auto-detectar pelo working directory)"
                         }
-                    },
-                    "required": ["project"]
+                    }
                 }
             ),
             Tool(
@@ -438,39 +437,19 @@ class CerebroMCP:
         except Exception as e:
             return [TextContent(type="text", text=f"Erro: {str(e)}")]
 
+    def _detect_project(self) -> str:
+        """Detecta projeto pelo git root do cwd. Nome exato da pasta."""
+        try:
+            from src.core.paths import get_git_root
+            return get_git_root().name
+        except Exception:
+            return Path.cwd().name
+
     def _memory(self, args: Dict[str, Any]) -> str:
         """Gera memória ativa e escreve no diretório nativo do Claude Code para auto-load."""
-        project = args.get("project")
-        if not project:
-            return "Erro: project é obrigatório"
-
-        content = self.memory_view.generate(project)
-
-        # FIX 4: Escreve MEMORY.md no diretório nativo do Claude Code
-        # Assim o Claude Code carrega automaticamente na próxima sessão
-        try:
-            from src.core.paths import get_auto_mem_path, get_memory_index
-            auto_mem_dir = get_auto_mem_path()
-            auto_mem_dir.mkdir(parents=True, exist_ok=True)
-            index_path = get_memory_index(auto_mem_dir)
-
-            # Gera conteúdo compatível com o formato que Claude Code espera
-            # Formato: # <title>\n\n- [type] filename (date): description
-            claude_format_lines = ["# OCerebro - Memória Ativa", ""]
-            claude_format_lines.append(f"## {project}")
-            claude_format_lines.append("")
-
-            # Parse do conteúdo gerado para extrair itens
-            for line in content.splitlines():
-                if line.startswith("- ["):
-                    claude_format_lines.append(line)
-
-            claude_content = "\n".join(claude_format_lines)
-            index_path.write_text(claude_content, encoding="utf-8")
-        except Exception:
-            pass  # Falha silenciosa - não bloqueia o retorno
-
-        return content
+        project = args.get("project") or self._detect_project()
+        path = self.memory_view.write_to_file(project)
+        return self.memory_view.generate(project)
 
     def _search(self, args: Dict[str, Any]) -> str:
         """Busca memórias"""
@@ -815,7 +794,10 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
             m_type = type_match.group(1).strip() if type_match else "project"
         if not project:
             project_match = re.search(r'project:\s*(.*)', content)
-            project = project_match.group(1).strip() if project_match else "unknown"
+            if project_match and project_match.group(1).strip():
+                project = project_match.group(1).strip()
+            else:
+                project = self._detect_project()
         if not tags:
             tags_match = re.search(r'tags:\s*(.*)', content)
             tags = tags_match.group(1).strip() if tags_match else ""

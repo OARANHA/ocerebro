@@ -1,6 +1,8 @@
 ---
-description: Ver memórias ativas do projeto atual (MEMORY.md)
+description: Ver memórias ativas do projeto atual
 ---
-Use a ferramenta cerebro_memory com project="$ARGUMENTS".
-Se $ARGUMENTS estiver vazio, tente detectar o nome do projeto pelo diretório atual.
-Mostre o conteúdo completo do MEMORY.md formatado.
+
+Use a ferramenta MCP `cerebro_memory` sem argumentos.
+O sistema detecta o projeto automaticamente.
+
+NÃO use Bash. NÃO use `ocerebro memory`. APENAS `cerebro_memory`.

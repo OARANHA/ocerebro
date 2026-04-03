@@ -94,7 +94,13 @@ class CerebroCLI:
         self.raw_storage.append(checkpoint_event)
         return f"Checkpoint criado: {draft_name} ({len(result.events)} eventos)"
 
-    def memory(self, project: str, output: Optional[Path] = None) -> str:
+    def memory(self, project: str = None, output: Optional[Path] = None) -> str:
+        if not project:
+            try:
+                from src.core.paths import get_git_root
+                project = get_git_root().name
+            except Exception:
+                project = Path.cwd().name
         content = self.memory_view.generate(project)
         if output:
             output.write_text(content, encoding="utf-8")
@@ -432,7 +438,10 @@ def main():
 
     # Comando: memory
     memory_parser = subparsers.add_parser("memory", help="Visualizar memória ativa")
-    memory_parser.add_argument("project", help="Nome do projeto")
+    memory_parser.add_argument(
+        "project", nargs="?", default=None,
+        help="Nome do projeto (opcional, detecta pelo git root)"
+    )
     memory_parser.add_argument("--output", type=Path, help="Arquivo de saída")
 
     # Comando: search
