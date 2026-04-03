@@ -389,6 +389,22 @@ class CerebroMCP:
                         }
                     }
                 }
+            ),
+            Tool(
+                name="cerebro_sync",
+                description="Sincroniza memórias existentes do Claude Code "
+                            "para o OCerebro (official/ + index). Use uma vez "
+                            "após instalar ou quando official/ estiver vazio.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "project": {
+                            "type": "string",
+                            "description": "Projeto para sincronizar "
+                                           "(omitir = auto-detectar)"
+                        }
+                    }
+                }
             )
         ]
 
@@ -430,6 +446,8 @@ class CerebroMCP:
                 result = self._cerebro_graph(arguments)
             elif name == "cerebro_dashboard":
                 result = self._cerebro_dashboard(arguments)
+            elif name == "cerebro_sync":
+                result = self._sync(arguments)
             else:
                 return [TextContent(type="text", text=f"Ferramenta desconhecida: {name}")]
 
@@ -445,10 +463,106 @@ class CerebroMCP:
         except Exception:
             return Path.cwd().name
 
+    def _sync(self, args: Dict[str, Any]) -> str:
+        """Sincroniza memórias Claude Code → OCerebro official/"""
+        from datetime import datetime
+        import yaml
+        import re
+
+        project = args.get("project") or self._detect_project()
+        mem_dir = get_auto_mem_path()
+
+        if not mem_dir.exists():
+            return f"Diretório não encontrado: {mem_dir}"
+
+        synced = 0
+        skipped = 0
+        errors = []
+
+        for md_file in mem_dir.glob("*.md"):
+            if md_file.name in ("MEMORY.md",) or md_file.name.startswith("."):
+                continue
+            try:
+                content = md_file.read_text(encoding="utf-8")
+
+                # Parse frontmatter
+                fm_match = re.match(r'^---\n(.*?)\n---\n(.*)$',
+                                    content, re.DOTALL)
+                if not fm_match:
+                    skipped += 1
+                    continue
+
+                frontmatter = yaml.safe_load(fm_match.group(1)) or {}
+                body = fm_match.group(2)
+                m_type = frontmatter.get("type", "project")
+                m_project = frontmatter.get("project") or project
+                mem_name = md_file.stem
+
+                # Mapeamento type → subdir (igual ao _capture_memory)
+                type_to_subdir = {
+                    "user": "decisions",
+                    "feedback": "preferences",
+                    "project": "decisions",
+                    "reference": "state",
+                }
+                subdir = type_to_subdir.get(m_type, "decisions")
+                cerebro_project = "global" if m_type == "user" else m_project
+
+                # Copia para official/
+                dest_dir = (self.cerebro_path / "official"
+                            / cerebro_project / subdir)
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_file = dest_dir / md_file.name
+                dest_file.write_text(content, encoding="utf-8")
+
+                # Indexa no metadata_db
+                if self.metadata_db:
+                    tags = frontmatter.get("tags", "")
+                    tags_str = (tags if isinstance(tags, str)
+                                else ",".join(tags)
+                                if isinstance(tags, list) else "")
+                    self.metadata_db.insert({
+                        "id": mem_name,
+                        "type": m_type,
+                        "project": cerebro_project,
+                        "title": frontmatter.get(
+                            "title",
+                            frontmatter.get("name", mem_name)
+                        ),
+                        "content": body,
+                        "tags": tags_str,
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat(),
+                        "layer": "sync",
+                        "path": str(dest_file),
+                    })
+
+                synced += 1
+
+            except Exception as e:
+                errors.append(f"{md_file.name}: {e}")
+
+        report = [f"[OK] cerebro_sync concluído para '{project}'",
+                  f"   Sincronizadas: {synced}",
+                  f"   Ignoradas: {skipped}"]
+        if errors:
+            report.append(f"   Erros: {len(errors)}")
+            for err in errors[:5]:
+                report.append(f"     - {err}")
+
+        return "\n".join(report)
+
     def _memory(self, args: Dict[str, Any]) -> str:
         """Gera memória ativa e escreve no diretório nativo do Claude Code para auto-load."""
         project = args.get("project") or self._detect_project()
-        path = self.memory_view.write_to_file(project)
+
+        # Se official/ estiver vazio, sincroniza automaticamente
+        official_dir = self.cerebro_path / "official"
+        has_memories = any(official_dir.rglob("*.md")) if official_dir.exists() else False
+        if not has_memories:
+            self._sync({"project": project})
+
+        self.memory_view.write_to_file(project)
         return self.memory_view.generate(project)
 
     def _search(self, args: Dict[str, Any]) -> str:

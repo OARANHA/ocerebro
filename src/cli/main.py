@@ -493,6 +493,16 @@ def main():
     gc_parser.add_argument("--threshold", type=int, default=7, dest="threshold_days")
     gc_parser.add_argument("--apply", action="store_true", dest="apply")
 
+    # Comando: sync
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Sincroniza memórias Claude Code → OCerebro official/"
+    )
+    sync_parser.add_argument(
+        "--project", default=None,
+        help="Projeto (padrão: detecta pelo git)"
+    )
+
     # Comando: full (instala dependências semânticas)
     subparsers.add_parser("full", help="Instalar dependências de busca semântica")
 
@@ -563,6 +573,18 @@ def main():
         result = cli.remember(dry_run=not args.apply)
     elif args.command == "gc":
         result = cli.gc_cmd(threshold_days=args.threshold_days, dry_run=not args.apply)
+    elif args.command == "sync":
+        from src.core.paths import get_git_root
+        project = getattr(args, 'project', None)
+        if not project:
+            try:
+                project = get_git_root().name
+            except Exception:
+                project = Path.cwd().name
+        # Reutiliza lógica do MCP via CLI direta
+        from src.mcp.server import CerebroMCP
+        mcp = CerebroMCP(args.cerebro_path)
+        result = mcp._sync({"project": project})
     elif args.command == "full":
         _install_semantic_deps()
         sys.exit(0)
