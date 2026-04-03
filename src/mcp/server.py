@@ -929,7 +929,6 @@ Uma chamada por memória. O sistema salva e indexa automaticamente.
         try:
             import subprocess
             import sys
-            import requests
 
             port = args.get("port", 7999)
 
