@@ -1,6 +1,6 @@
 {
   "name": "ocerebro",
-  "version": "0.4.22",
+  "version": "0.4.23",
   "description": "OCerebro - Sistema de Memoria para Agentes (Claude Code/MCP)",
   "main": "bin/ocerebro.js",
   "bin": {
@@ -47,6 +47,6 @@
     "access": "public"
   },
   "dependencies": {
-    "ocerebro": "^0.4.20"
+    "ocerebro": "^0.4.23"
   }
 }

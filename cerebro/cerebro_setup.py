@@ -444,17 +444,13 @@ def setup_claude(auto: bool = True) -> bool:
     python_cmd = find_python_with_ocerebro()
     print(f"[1/5] Python detectado: {python_cmd}")
 
-    # Encontra caminho do OCerebro
-    ocerebro_path = get_ocerebro_path()
-
     # Gera configuração MCP
     mcp_config = {
+        "transport": "stdio",
         "command": python_cmd,
-        "args": ["-m", "src.mcp.server"],
-        "cwd": str(ocerebro_path),
-        "env": {}
+        "args": ["-m", "ocerebro.mcp.server"]
     }
-    print(f"[2/5] Configuração MCP gerada")
+    print(f"[2/5] MCP command: {python_cmd} -m ocerebro.mcp.server")
 
     configured = []
     errors = []
@@ -499,13 +495,20 @@ def setup_claude(auto: bool = True) -> bool:
                 except json.JSONDecodeError:
                     print(f"  Aviso: Config existente inválida, criando nova")
 
-            if "mcpServers" not in existing_config:
-                existing_config["mcpServers"] = {}
-            existing_config["mcpServers"]["ocerebro"] = mcp_config
+            # MCP config para Claude Code usa mcp.servers
+            if target_type == "code":
+                if "mcp" not in existing_config:
+                    existing_config["mcp"] = {}
+                if "servers" not in existing_config["mcp"]:
+                    existing_config["mcp"]["servers"] = {}
+                existing_config["mcp"]["enabled"] = True
+                existing_config["mcp"]["servers"]["ocerebro"] = mcp_config
 
-            if "mcp" not in existing_config:
-                existing_config["mcp"] = {}
-            existing_config["mcp"]["enabled"] = True
+            # MCP config para Claude Desktop usa mcpServers
+            elif target_type == "desktop":
+                if "mcpServers" not in existing_config:
+                    existing_config["mcpServers"] = {}
+                existing_config["mcpServers"]["ocerebro"] = mcp_config
 
             # Adiciona hook para dream automatico ao final da sessao
             if "hooks" not in existing_config:
@@ -518,7 +521,7 @@ def setup_claude(auto: bool = True) -> bool:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": f"{python_cmd} -m src.cli.main dream --since 1 --apply --silent"
+                            "command": "ocerebro dream --since 1 --apply --silent"
                         }
                     ]
                 }
